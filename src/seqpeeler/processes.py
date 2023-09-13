@@ -1,7 +1,7 @@
 from seqpeeler.filemanager import ExperimentDirectory
 
 
-class Job:
+class SequenceJob:
     """
     A class that wrap everything that is needed to run a job
 
@@ -38,6 +38,9 @@ class Job:
 
 
     def prepare_exec(self, result_dir):
+        """
+        Setup a directory for the job inside of the result_dir
+        """
         # Init the command
         self.cmd = self.initial_cmd
 
@@ -79,4 +82,106 @@ class Job:
 
 
 
-# class Scheduler:
+
+class Scheduler:
+    """
+    Run a job set according to their priorities and the number of allowed cores
+
+        Attributes:
+            
+    """
+
+    def __init__(self):
+        self.running_jobs = []
+        self.waiting_list = []
+
+
+    def submit_job(self, job):
+        self.waiting_list.append(job)
+
+
+
+
+
+
+# # launches the processes in the console, from a command and a list of directories
+# # returns the dictionnary of process(Popen) : dirname(String)
+# def trigger_processes(cmdline, dirnamelist, priorities):
+#     global NB_PROCESS_STARTED_SEQUENTIAL
+#     global NB_PROCESS_STARTED_PARALLEL
+
+#     dirnamedict = dict()
+#     nb_proc = len(dirnamelist)
+
+#     for i in range(nb_proc):
+#         dirname = dirnamelist[i]
+#         #print("Process running in:", dirname)
+#         p = PopenExtended(cmdline, shell=True, cwd=dirname, stdout=PIPE, stderr=PIPE, prioritised=priorities[i])
+#         dirnamedict[p] = dirname
+#         #sleep(0.1) # launches processes at different times
+
+#     if nb_proc == 1 :
+#         NB_PROCESS_STARTED_SEQUENTIAL += nb_proc
+#     else :
+#         NB_PROCESS_STARTED_PARALLEL += nb_proc
+
+#     return dirnamedict
+
+
+# def wait_processes(desired_output, dirnamedict):
+#     global NB_PROCESS_ENDED_SEQUENTIAL
+#     global NB_PROCESS_INTERRUPTED
+
+#     processes = list(dirnamedict.keys())
+#     nb_proc = len(dirnamedict)
+#     firstproc = None
+#     tmpproc = None
+
+#     # wait until the last process terminates
+#     while len(processes) > 0 : #and firstproc is None :
+
+#         # check for terminated process
+#         for p in processes:
+#             if p.poll() is not None: # one of the processes finished
+                
+#                 processes.remove(p)
+                
+#                 # if desired output
+#                 if compare_output((p.returncode, p.stdout, p.stderr), desired_output) :
+
+#                     if not p.prioritised:
+#                         tmpproc = p
+                    
+#                     else :
+#                         firstproc = p
+#                         for ptokill in processes :
+#                             ptokill.kill()
+#                             NB_PROCESS_INTERRUPTED += 1
+
+#                 # finalize the termination of the process
+#                 p.communicate()
+#                 break
+
+#         sleep(.001)
+    
+#     if nb_proc == 1 :
+#         NB_PROCESS_ENDED_SEQUENTIAL += 1
+
+#     return firstproc if firstproc is not None else tmpproc
+
+
+# # returns the index of the dirname that caused the first desired output when running commands
+# # returns -1 if none of them returned the desired output
+# def trigger_and_wait_processes(cmdargs, dirnamelist, priorities=None) :
+#     #print(dirnamelist)
+#     if priorities is None :
+#         priorities = [True for x in dirnamelist]
+#     dirnamedict = trigger_processes(cmdargs.subcmdline_replaced, dirnamelist, priorities) # creates dirnamedict of process:dirname
+#     #print("proc dict : ", dirnamedict)
+#     firstproc = wait_processes(cmdargs.desired_output, dirnamedict.copy())
+#     #print("first process : ", firstproc)
+
+#     if firstproc is None :
+#         return None
+#     else :
+#         return dirnamedict.get(firstproc)

@@ -1,4 +1,4 @@
-from os import path, mkdir
+from os import path, mkdir, SEEK_SET
 from sys import stderr
 from shutil import rmtree
 
@@ -30,6 +30,7 @@ class FileManager:
         # Transform file path to absolute
         self.filename = path.abspath(filename)
         self.index = None
+        self.sequence_list = []
         self.total_seq_size = 0
         self.verbose = False
 
@@ -93,7 +94,26 @@ class FileManager:
 
 
     def extract(self, dest_file):
-        pass
+        """
+        Extract sequences subparts from the origin file to generate the current file
+
+            Parameters:
+                dest_file (string): Path to the file to generate
+
+            Return:
+                True if the file has been created
+        """
+        
+        with open(dest_file, "w") as extract, open(self.filename, "rb") as origin:
+            # Writes each sub-sequence of the file
+            for seq_name in self.sequence_list:
+                seq_holder = self.index[seq_name]
+                # Write header
+                print(f"> {seq_name}_{seq_holder.left}-{seq_holder.right}", file=extract)
+                # Write sequence
+                origin.seek(seq_holder.left, SEEK_SET)
+                seq_slice = origin.read(seq_holder.size())
+                print(seq_slice.decode('ascii'), file=extract)
 
 
 class ExperimentContent:
