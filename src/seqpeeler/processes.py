@@ -100,6 +100,18 @@ class Scheduler:
         self.waiting_list.append(job)
 
 
+    def start_next_job(self):
+        job = self.waiting_list.pop(0)
+        print(f"Command line to run {job.cmd}")
+
+        # Popen
+
+
+# class PopenExtended(Popen) :
+
+#     def __init__(self, args, bufsize=-1, executable=None, stdin=None, stdout=None, stderr=None, preexec_fn=None, close_fds=True, shell=False, cwd=None, env=None, universal_newlines=None, startupinfo=None, creationflags=0, restore_signals=True, start_new_session=False, pass_fds=(), *, encoding=None, errors=None, text=None, prioritised=True) :
+#         self.prioritised = prioritised # new attribute
+#         super().__init__(args=args, bufsize=bufsize, executable=executable, stdin=stdin, stdout=stdout, stderr=stderr, preexec_fn=preexec_fn, close_fds=close_fds, shell=shell, cwd=cwd, env=env, universal_newlines=universal_newlines, startupinfo=startupinfo, creationflags=creationflags, restore_signals=restore_signals, start_new_session=start_new_session, pass_fds=pass_fds, encoding=encoding, errors=errors, text=text)
 
 
 

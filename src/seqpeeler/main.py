@@ -4,62 +4,9 @@ from pathlib import Path
 from os import path, mkdir
 from shutil import rmtree
 
-from seqpeeler.minimise import reduce_file_set, sp_to_files, write_stats
+from seqpeeler.minimise import reduce_file_set
 from seqpeeler.filemanager import FileManager
 
-
-# class CmdArgs :
-
-#     def __init__(self, subcmdline, infilename, nofof, outfilesnames, desired_output, verbose) :
-#         self.subcmdline = subcmdline
-#         self.infilename = infilename # the name of the fof or the only file of sequences
-#         self.nofof = nofof
-#         self.outfilesnames = outfilesnames
-#         self.desired_output = desired_output
-#         self.verbose = verbose
-#         self.seqfilesnames = []
-#         self.init_seqfilesnames()
-#         self.fileregister = self.make_fileregister(self.get_all_infiles() + self.outfilesnames)
-#         self.subcmdline_replaced = self.replace_path_in_cmd(self.get_all_infiles() + self.outfilesnames)
-#         # print(self.fileregister)
-#         # print(self.subcmdline_replaced)
-    
-#     def init_seqfilesnames(self) :
-#         if self.nofof :
-#             self.seqfilesnames = [self.infilename]
-#         else :
-#             self.seqfilesnames = fof_to_list(self.infilename)
-
-#     def get_all_infiles(self) :
-#         return [self.infilename] if self.nofof else self.seqfilesnames + [self.infilename]
-        
-#     def replace_path_in_cmd(self, files) :
-#         cmd = self.subcmdline
-#         for f in files :
-#             cmd = cmd.replace(f, self.fileregister[f])
-#         return cmd
-    
-#     # returns the dict of filepath:renamedfile
-#     # where renamedfile is either the filename or something else if this filename is already used
-#     def make_fileregister(self, files) :
-#         fileregister = dict()
-#         for f in files :
-#             i = 1
-#             p = Path(f)
-#             tmpname = p.name
-#             while tmpname in fileregister.values() :
-#                 tmpname = p.stem + "_" + str(i) + p.suffix
-#                 i += 1
-#             fileregister[f] = tmpname
-#         return fileregister
-    
-#     def save_fileregister(self, filepath) :
-#         infiles = self.get_all_infiles()
-#         f = open(filepath, 'w')
-#         for oldpath,newname in self.fileregister.items() :
-#             if oldpath in infiles :
-#                 f.write(oldpath + " : " + newname + "\n")
-#         f.close()
 
 
 # returns the list of filenames (as string) in the file of files
@@ -96,41 +43,44 @@ def parsing_files(filesnames) :
 
 
 
-def print_files_debug(dirname) :
-    pdir = Path(dirname)
-    for filename in pdir.iterdir() :
-        p = Path(filename)
-        outputfilename = dirname + "/" + p.name
-        
-        print("\nIn file \"" + outputfilename + "\" :\n")
-        with open(outputfilename) as f :
-            print(f.read())
-        
-    print()
+def relative_to_absolute(cmd, paths_to_preserve):
+    splitted_cmd = cmd.split(' ')
 
+    for idx, word in enumerate(splitted_cmd):
+        try:
+            if path.exists(word) and word not in paths_to_preserve:
+                splitted_cmd[idx] = path.abspath(word)
+        except:
+            continue
+
+    return ' '.join(splitted_cmd)
 
 
 # prepare the argument parser and parses the command line
 # returns an argparse.Namespace object
 def parse_args() :
-    parser = argparse.ArgumentParser(prog="Genome Fuzzing")
+    parser = argparse.ArgumentParser(prog="seqpeeler", description="seqpeeler is a software that helps the user to minimize fasta examples. It takes as input a command line to execute and a behaviour to track. Then it iteratively peel the sequences until the behaviour disappears.")
 
     # non positionnal arguments
-    parser.add_argument('-e', '--stderr', default=None)
-    parser.add_argument('-f', '--onefasta', action='store_true')
-    parser.add_argument('-o', '--outfilesnames', action='extend', nargs='+', type=str, default=[])
-    parser.add_argument('-r', '--returncode', default=None, type=int)
-    parser.add_argument('-u', '--stdout', default=None)
-    parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('-d', '--outdir', default='Results')
-
-    # positionnal arguments
-    parser.add_argument('filename')
-    parser.add_argument('cmdline')
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument('-l', '--fasta-list', help="List of paths to fasta files to peel", type=str, nargs='+', default=None)
+    inputs.add_argument('-fof', '--file-of-files', help="Path to the file of files that contains the input fasta to peel.", type=str, default=None)
+    parser.add_argument('-c', '--command-line', help="Command line to use for the peeling", type=str, required=True)
     
+
+    triggers = parser.add_argument_group("triggers", "Triggers used to define the tracked behaviour. At least, one of them must be set")
+    triggers.add_argument('-r', '--returncode', help="Software return code to track", default=None, type=int)
+    triggers.add_argument('-u', '--stdout', help="Text on standard output to track", default=None)
+    triggers.add_argument('-e', '--stderr', help="Text on standard error to track", default=None)
+    
+    parser.add_argument('-d', '--outdir', help="Directory where all the results will be written. If the directory already exists, it will be overwritten.", default='Results')
+    parser.add_argument('-o', '--outfilenames', help="The list of the paths to the output files that will be generated by the command line. seqpeeler needs this list to avoid output collisions on multithread.", nargs='*', type=str, default=[])
+
+    parser.add_argument('-v', '--verbose', action='store_true')
+
     args = parser.parse_args()
     if args.returncode is None and args.stdout is None and args.stderr is None :
-        parser.error("No output requested, add -r or -e or -u.")
+        parser.error("You have to specify at least one trigger")
     
     return args
 
@@ -151,13 +101,16 @@ def main():
 
     # get the arguments
     desired_output = (args.returncode, args.stdout, args.stderr)
-    seqfiles = [args.filename] if args.onefasta else fof_to_list(args.filename)
+
+    # Parse input sequences
+    seqfiles = args.fasta_list if args.fasta_list is not None else fof_to_list(args.file_of_files)
+    # Translate from relative to absolute paths for input files that are not part of the reduction process
+    args.command_line = relative_to_absolute(args.command_line, frozenset(seqfiles + args.outfilenames))
 
     if args.verbose :
-        s = "\n - Desired output : " + str(desired_output) + "\n"
-        s += " - Fofname : " + args.filename + "\n"
-        s += " - Input files names : " + str(", ".join(seqfiles)) + "\n"
-        s += " - Command : " + cmdline + "\n"
+        print(f" - Triggers: {desired_output}")
+        print(f" - Will perform peeling on: {','.join(seqfiles)}")
+        print(f" - Command used: {cmdline}")
         print(s)
 
     # parse the sequences of each file
@@ -170,20 +123,4 @@ def main():
     # process the data
     reduced = reduce_file_set(file_managers, args)
     
-    resultdir = "Results"
-    rmtree(resultdir, ignore_errors=True)
-    Path(resultdir).mkdir()
-    
-    # writes the reduced seqs in files in a new directory
-    sp_to_files(spbyfile, cmdargs, resultdir)
-    
-    # writes the file register
-    cmdargs.save_fileregister(resultdir + "/fileregister.txt")
-    
     duration = time() - starttime
-    write_stats(duration, resultdir + "/stats.txt")
-
-    if args.verbose :
-        print("\n", resultdir, " : ", sep="")
-        print_files_debug(resultdir)
-        print("\nDone.")

@@ -73,6 +73,7 @@ class FileManager:
 
                     # set new seq values
                     header = line[1:].strip()
+                    self.sequence_list.append(header)
                     seqstart = filepos + len(line)
                 
                 filepos += len(line)
@@ -99,9 +100,6 @@ class FileManager:
 
             Parameters:
                 dest_file (string): Path to the file to generate
-
-            Return:
-                True if the file has been created
         """
         
         with open(dest_file, "w") as extract, open(self.filename, "rb") as origin:
@@ -110,10 +108,27 @@ class FileManager:
                 seq_holder = self.index[seq_name]
                 # Write header
                 print(f"> {seq_name}_{seq_holder.left}-{seq_holder.right}", file=extract)
+
                 # Write sequence
                 origin.seek(seq_holder.left, SEEK_SET)
-                seq_slice = origin.read(seq_holder.size())
-                print(seq_slice.decode('ascii'), file=extract)
+                to_read = seq_holder.size()
+                last_char_is_return = False
+                while to_read > 0:
+                    # Read by chunk to avoir large RAM
+                    read_size = min(to_read, 4194304) # 4 MB max
+                    seq_slice = origin.read(read_size)
+                    seq_slice = seq_slice.decode('ascii')
+
+                    # Write the slice
+                    print(seq_slice, file=extract, end='')
+                    last_char_is_return = True if seq_slice[-1] == "\n" else False
+
+                    # Update the remaining size to read
+                    to_read -= read_size
+
+                if not last_char_is_return:
+                    print("", file=extract)
+
 
 
 class ExperimentContent:
@@ -128,6 +143,10 @@ class ExperimentContent:
     def __init__(self):
         self.input_sequences = {}
         self.output_files = set()
+
+    def set_inputs(self, file_managers):
+        for fm in file_managers:
+            self.input_sequences[fm] = fm
 
     def copy(self):
         copy = ExperimentContent()
