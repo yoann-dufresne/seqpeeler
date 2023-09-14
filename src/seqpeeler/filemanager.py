@@ -28,6 +28,7 @@ class FileManager:
             raise FileNotFoundError(filename)
 
         # Transform file path to absolute
+        self.original_name = filename
         self.filename = path.abspath(filename)
         self.index = None
         self.sequence_list = []
@@ -142,17 +143,21 @@ class ExperimentContent:
     """
     def __init__(self):
         self.input_sequences = {}
-        self.output_files = set()
+        self.output_files = {}
 
     def set_inputs(self, file_managers):
         for fm in file_managers:
-            self.input_sequences[fm] = fm
+            self.input_sequences[fm.original_name] = fm
+
+    def set_outputs(self, paths):
+        for p in paths:
+            self.output_files[p] = path.abspath(p)
 
     def copy(self):
         copy = ExperimentContent()
 
         copy.input_sequences = {name: self.input_sequences[name].copy() for name in self.input_sequences}
-        copy.output_files = set(self.output_files)
+        copy.output_files = {x: y for x, y in self.output_files.items()}
 
         return copy
 
@@ -171,7 +176,7 @@ class ExperimentDirectory:
         idx = 0
         while True:
             if not path.exists(path.join(parentpath, str(idx))):
-                return idx
+                return str(idx)
             idx += 1
 
 

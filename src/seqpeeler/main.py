@@ -111,14 +111,9 @@ def main():
         print(f" - Triggers: {desired_output}")
         print(f" - Will perform peeling on: {','.join(seqfiles)}")
         print(f" - Command used: {cmdline}")
-        print(s)
 
     # parse the sequences of each file
     file_managers = parsing_files(seqfiles)
-    for manager in file_managers:
-        manager.verbose = True
-        print(manager)
-        manager.verbose = False
     
     # process the data
     reduced = reduce_file_set(file_managers, args)

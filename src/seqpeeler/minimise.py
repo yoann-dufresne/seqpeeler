@@ -5,6 +5,7 @@ from subprocess import PIPE
 from shutil import rmtree
 
 from seqpeeler.filemanager import ExperimentDirectory, ExperimentContent
+from seqpeeler.processes import SequenceJob, mainscheduler
 
 
 
@@ -94,6 +95,9 @@ def reduce_uniq_file(experiment, args) :
     return None
 
 
+def iterative_reduction(args):
+    for job in mainscheduler.terminated_list:
+        
 
 
 def reduce_file_set(file_managers, args) :
@@ -101,6 +105,14 @@ def reduce_file_set(file_managers, args) :
     if len(file_managers) != 1 :
         raise NotImplementedError("Multiple files not implemented")
     
+    # Prepare the context of exec
     exp_content = ExperimentContent()
     exp_content.set_inputs(file_managers)
+    exp_content.set_outputs(args.outfilenames)
 
+    # Create the first job (entire files)
+    job = SequenceJob(exp_content, args.command_line, args.outdir)
+    mainscheduler.submit_job(job)
+
+    while len(mainscheduler.waiting_list) > 0:
+        mainscheduler.run()
