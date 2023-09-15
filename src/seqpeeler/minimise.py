@@ -95,24 +95,63 @@ def reduce_uniq_file(experiment, args) :
     return None
 
 
-def iterative_reduction(args):
-    for job in mainscheduler.terminated_list:
+
+class Peeler:
+
+    def __init__(self, args):
+        self.args = args
+        self.expected_return = args.returncode
+        self.expected_stdout = args.stdout
+        self.expected_stderr = args.stderr
+
+        self.best_job = None
+
+    
+    def reduce_file_set(self, file_managers):
+        if len(file_managers) != 1 :
+            raise NotImplementedError("Multiple files not implemented")
         
+        # Prepare the context of exec
+        exp_content = ExperimentContent()
+        exp_content.set_inputs(file_managers)
+        exp_content.set_outputs(self.args.outfilenames)
+
+        # Create the first job (entire files)
+        job = SequenceJob(exp_content, self.args.command_line, self.args.outdir)
+        mainscheduler.submit_job(job)
+        self.best_job = job
+
+        while len(mainscheduler.waiting_list) > 0:
+            mainscheduler.run()
+            self.iterative_reduction()
 
 
-def reduce_file_set(file_managers, args) :
-    
-    if len(file_managers) != 1 :
-        raise NotImplementedError("Multiple files not implemented")
-    
-    # Prepare the context of exec
-    exp_content = ExperimentContent()
-    exp_content.set_inputs(file_managers)
-    exp_content.set_outputs(args.outfilenames)
+    def iterative_reduction(self):
+        for job in mainscheduler.terminated_list:
+            # Is the expected behaviour present ?
+            return_ok = True
+            if self.expected_return is not None:
+                return_ok = self.expected_return == job.returncode
+            stdout_ok = True
+            if self.expected_stdout is not None:
+                stdout_ok = self.expected_stdout in job.stdout
+            stderr_ok = True
+            if self.expected_stderr is not None:
+                stderr_ok = self.expected_stderr in job.stderr
 
-    # Create the first job (entire files)
-    job = SequenceJob(exp_content, args.command_line, args.outdir)
-    mainscheduler.submit_job(job)
+            # If behaviour present
+            if return_ok and stdout_ok and stderr_ok:
+                # register if smallest
+                if job.exp_content.inputs_size < self.best_job.exp_content.inputs_size:
+                    # TODO: Also clean previous best job
+                    self.best_job = job
 
-    while len(mainscheduler.waiting_list) > 0:
-        mainscheduler.run()
+                # TODO: Remove subsumed jobs
+
+                # Split into pieces and add the jobs
+                pass
+
+            # Behaviour not present: lateral shifts for the splits
+            else:
+
+

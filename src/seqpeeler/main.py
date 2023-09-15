@@ -116,6 +116,7 @@ def main():
     file_managers = parsing_files(seqfiles)
     
     # process the data
-    reduced = reduce_file_set(file_managers, args)
+    peeler = Peeler(args)
+    peeler.reduce_file_set(file_managers)
     
     duration = time() - starttime
