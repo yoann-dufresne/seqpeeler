@@ -5,7 +5,7 @@ from subprocess import Popen, PIPE
 from seqpeeler.filemanager import ExperimentDirectory
 
 
-class SequenceJob:
+class Job:
     """
     A class that wrap everything that is needed to run a job
 
@@ -112,6 +112,11 @@ class Scheduler:
         self.waiting_list = []
         self.terminated_list = []
         self.max_processes = 1
+        self.expected_behaviour = (None, None, None)
+
+
+    def set_expected_job_behaviour(self, returncode, stdout, stderr):
+        self.expected_behaviour = (returncode, stdout, stderr)
 
 
     def submit_job(self, job):
@@ -129,25 +134,28 @@ class Scheduler:
         self.terminated_list.append(job)
 
 
-    def run(self):
-        while len(self.waiting_list) > 0 or len(self.running_list) > 0:
-            # Verify the end of running jobs
-            new_running_list = []
-            for process, job in self.running_list:
-                if process.poll() is not None:
-                    # Job is over
-                    self.terminate_job(process, job)
-                else:
-                    new_running_list.append((process, job))
-            self.running_list = new_running_list
+    def is_running(self):
+        return (len(self.waiting_list) > 0) or (len(self.running_list) > 0)
 
-            # Do nothing if the max allowed number of precesses are currently running
-            if self.max_processes <= len(self.running_list) or len(self.waiting_list) == 0:
-                sleep(1)
-                continue
 
-            # Run a new job
-            self.start_next_job()
+    def keep_running(self):
+        # Verify the end of running jobs
+        new_running_list = []
+        for process, job in self.running_list:
+            if process.poll() is not None:
+                # Job is over
+                self.terminate_job(process, job)
+            else:
+                new_running_list.append((process, job))
+        self.running_list = new_running_list
+
+        # Do nothing if the max allowed number of precesses are currently running
+        if self.max_processes <= len(self.running_list) or len(self.waiting_list) == 0:
+            sleep(0.1)
+            return
+
+        # Run a new job
+        self.start_next_job()
 
 
     def start_next_job(self):
@@ -161,6 +169,22 @@ class Scheduler:
         process = Popen(args=job.cmd, stdout=PIPE, stderr=PIPE, shell=True)
         self.running_list.append((process, job))
         job.status = "RUNNING"
+
+
+    def is_behavious_present(self, job):
+        # Is the expected behaviour present ?
+        return_ok = True
+        if self.expected_behaviour[0] is not None:
+            return_ok = self.expected_behaviour[0] == job.returncode
+        stdout_ok = True
+        if self.expected_behaviour[1] is not None:
+            stdout_ok = self.expected_behaviour[1] in self.stdout
+        stderr_ok = True
+        if self.expected_behaviour[2] is not None:
+            stderr_ok = self.expected_behaviour[2] in self.stderr
+
+        # If behaviour present
+        return return_ok and stdout_ok and stderr_ok
 
 
 mainscheduler = Scheduler()

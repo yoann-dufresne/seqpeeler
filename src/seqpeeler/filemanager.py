@@ -6,15 +6,25 @@ from shutil import rmtree
 class SequenceHolder:
     """ Remembers the absolute positions of a sequence in a file (in Bytes)
     """
-    def __init__(self, left, right):
+    def __init__(self, left, right, file):
         self.left = left # First byte of the sequence
         self.right = right # Last byte of the sequence
+        self.file = file
 
     def size(self):
         return self.right - self.left + 1
 
     def copy(self):
-        return SequenceHolder(self.left, self.right)
+        return SequenceHolder(self.left, self.right, self.file)
+
+    def __eq__(self, other):
+        return self.size() == other.size()
+
+    def __lt__(self, other):
+        return self.size() > other.size()
+
+    def __hash__(self):
+        return (self.left, self.right).__hash__()
 
     def __repr__(self):
         return f"({self.left} : {self.right})"
@@ -36,6 +46,10 @@ class FileManager:
         self.verbose = False
 
 
+    def __lt__(self, other):
+        return self.total_seq_size < other.total_seq_size
+
+
     def __repr__(self):
         if self.verbose:
             s = f"FileManager({self.filename}):\n"
@@ -51,7 +65,7 @@ class FileManager:
                 # Multiple identical headers in the file
                 print(f"WARNING: header {header} is present more than once in the file {filename}. Only hte last one have been kept", file=stderr)
                 self.total_seq_size -= self.index[header].size()
-            self.index[header] = SequenceHolder(seqstart, filepos-1)
+            self.index[header] = SequenceHolder(seqstart, filepos-1, self)
             self.total_seq_size += self.index[header].size()
 
 
