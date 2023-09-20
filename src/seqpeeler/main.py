@@ -4,7 +4,7 @@ from pathlib import Path
 from os import path, mkdir
 from shutil import rmtree
 
-from seqpeeler.minimise import reduce_file_set
+from seqpeeler.minimise import Peeler
 from seqpeeler.filemanager import FileManager
 
 

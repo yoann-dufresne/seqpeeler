@@ -18,9 +18,6 @@ class Peeler:
 
     
     def reduce_file_set(self, file_managers):
-        if len(file_managers) != 1 :
-            raise NotImplementedError("Multiple files not implemented")
-        
         # Prepare the context of exec
         exp_content = ExperimentContent()
         exp_content.set_inputs(file_managers)
@@ -52,7 +49,7 @@ class CompleteJob(Job):
     """
 
     def __init__(self, exp_content, cmd, out_directory):
-        super().__init__(self, exp_content, cmd, out_directory)
+        super().__init__(exp_content, cmd, out_directory)
 
 
     def next_jobs(self):
@@ -63,17 +60,17 @@ class CompleteJob(Job):
         # Expected behaviour is present
 
         # Only 1 file => Try to reduce its sequences
-        if len(files) == 1:
+        if len(self.exp_content.input_sequences) == 1:
             print("TODO: dichotomic Job")
             return []
 
         # Multiple files => Try to remove some files
-        in_files = list(exp_content.input_sequences.values())
+        in_files = list(self.exp_content.input_sequences.values())
         in_files.sort(reverse=True)
 
         # Experiment content with ordered input file
         content = ExperimentContent()
-        content.set_outputs(exp_content.output_files.keys())
+        content.set_outputs(self.exp_content.output_files.keys())
         content.set_inputs(in_files)
 
         jobs = []
@@ -84,17 +81,18 @@ class CompleteJob(Job):
 
 
 class DeleteFilesJob(Job):
-    def __init__(self, exp_content, exp_outdir, deletion_idx=0):
-        self.files.sort(reverse=True, key=lambda x: exp_content.input_sequences[x].total_seq_size)
+    def __init__(self, exp_content, cmd, exp_outdir, deletion_idx=0):
+        self.files = [x for x in exp_content.input_sequences.values()]
+        self.files.sort(reverse=True, key=lambda x: x.total_seq_size)
         self.deletion_idx = deletion_idx
 
         delete_content = ExperimentContent()
-        for idx, in_path in enumerate(self.files):
+        for idx, input_manager in enumerate(self.files):
             if idx != self.deletion_idx:
-                delete_content.set_input()
+                delete_content.set_input(input_manager)
         delete_content.set_outputs(exp_content.output_files.keys())
         
-        super().__init__(delete_content, job.initial_cmd, exp_outdir)
+        super().__init__(delete_content, cmd, exp_outdir)
 
 
     def next_jobs(self):

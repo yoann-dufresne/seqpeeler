@@ -171,7 +171,7 @@ class Scheduler:
         job.status = "RUNNING"
 
 
-    def is_behavious_present(self, job):
+    def is_behaviour_present(self, job):
         # Is the expected behaviour present ?
         return_ok = True
         if self.expected_behaviour[0] is not None:
