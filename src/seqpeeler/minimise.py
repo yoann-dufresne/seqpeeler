@@ -90,6 +90,8 @@ class DeleteFilesJob(Job):
         for idx, input_manager in enumerate(self.files):
             if idx != self.deletion_idx:
                 delete_content.set_input(input_manager)
+            else:
+                cmd = cmd.replace(input_manager.original_name, "").replace("  ", " ")
         delete_content.set_outputs(exp_content.output_files.keys())
         
         super().__init__(delete_content, cmd, exp_outdir)

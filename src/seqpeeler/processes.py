@@ -35,6 +35,7 @@ class Job:
         self.returncode = returncode
         self.stdout = stdout.read().decode('ascii')
         self.stderr = stderr.read().decode('ascii')
+        self.exp_dir.save_outputs(returncode, self.stdout, self.stderr)
 
 
     def clean(self):
@@ -52,6 +53,7 @@ class Job:
         self.status = "CLEANED"
 
 
+
     def prepare_exec(self):
         """
         Setup a directory for the job inside of the result_dir
@@ -65,6 +67,7 @@ class Job:
         
         # Create the input files
         for cmd_input_filename in self.exp_content.input_sequences:
+            print(cmd_input_filename)
             file_manager = self.exp_content.input_sequences[cmd_input_filename]
             # Extract the name of the outfile
             filename = path.basename(file_manager.filename)
@@ -76,7 +79,7 @@ class Job:
             # register the new path
             newpath = path.join(parentdir, filename)
             self.exp_infile_names[cmd_input_filename] = newpath
-            self.cmd.replace(cmd_input_filename, newpath)
+            self.cmd = self.cmd.replace(cmd_input_filename, newpath)
             # copy the correct slice of the file in the exp directory
             file_manager.extract(newpath)
 
@@ -163,7 +166,8 @@ class Scheduler:
         job = self.waiting_list.pop(0)
         job.prepare_exec()
 
-        print(f"Command line to run {job.cmd}")
+        print(f"Running {job.cmd}")
+        job.exp_dir.save_cmd(job.cmd)
 
         # Run the job
         process = Popen(args=job.cmd, stdout=PIPE, stderr=PIPE, shell=True)

@@ -246,6 +246,20 @@ class ExperimentDirectory:
         mkdir(self.dirpath)
 
 
+    def save_cmd(self, cmd):
+        with open(path.join(self.dirpath, ".cmd.txt"), 'w') as fw:
+            print(cmd, file=fw)
+
+
+    def save_outputs(self, return_code, stdout, stderr):
+        with open(path.join(self.dirpath, ".returncode.txt"), 'w') as fw:
+            print(str(return_code), file=fw)
+        with open(path.join(self.dirpath, ".stdout.txt"), 'w') as fw:
+            print(stdout, file=fw)
+        with open(path.join(self.dirpath, ".stderr.txt"), 'w') as fw:
+            print(stderr, file=fw)
+
+
     def clean(self):
         rmtree(self.dirpath)
 
