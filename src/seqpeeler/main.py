@@ -1,11 +1,11 @@
 import argparse
 from time import time
-from pathlib import Path
 from os import path, mkdir
 from shutil import rmtree
 
 from seqpeeler.minimise import Peeler
 from seqpeeler.filemanager import FileManager
+from seqpeeler.processes import mainscheduler
 
 
 
@@ -101,6 +101,7 @@ def main():
 
     # get the arguments
     desired_output = (args.returncode, args.stdout, args.stderr)
+    mainscheduler.set_expected_job_behaviour(*desired_output)
 
     # Parse input sequences
     seqfiles = args.fasta_list if args.fasta_list is not None else fof_to_list(args.file_of_files)
@@ -119,4 +120,6 @@ def main():
     peeler = Peeler(args)
     peeler.reduce_file_set(file_managers)
     
+    print(peeler.best_job.cmd)
+
     duration = time() - starttime

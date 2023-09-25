@@ -1,6 +1,7 @@
 from time import sleep
 from os import path
 from subprocess import Popen, PIPE
+from shutil import rmtree
 
 from seqpeeler.filemanager import ExperimentDirectory
 
@@ -30,6 +31,9 @@ class Job:
         self.exp_infile_names = {}
         self.exp_outfile_names = {}
 
+        self.child_jobs = []
+        self.subsumed_jobs = []
+
 
     def save_triggers(self, returncode, stdout, stderr):
         self.returncode = returncode
@@ -38,20 +42,23 @@ class Job:
         self.exp_dir.save_outputs(returncode, self.stdout, self.stderr)
 
 
-    def clean(self):
-        if path.exists(self.result_dir):
-            rmtree(self.result_dir)
+    def clean(self, mrproper=False):
+        self.exp_dir.clean()
 
-        self.cmd = None
-        self.exp_dir = None
-        self.stdout = None
-        self.stderr = None
+        if mrproper:
+            self.cmd = None
+            self.exp_dir = None
+            self.stdout = None
+            self.stderr = None
 
-        self.exp_infile_names = {}
-        self.exp_outfile_names = {}
+            self.exp_infile_names = {}
+            self.exp_outfile_names = {}
         
         self.status = "CLEANED"
 
+
+    def set_subsumed_job(self, job):
+        self.subsumed_jobs.append(job)
 
 
     def prepare_exec(self):
@@ -67,7 +74,6 @@ class Job:
         
         # Create the input files
         for cmd_input_filename in self.exp_content.input_sequences:
-            print(cmd_input_filename)
             file_manager = self.exp_content.input_sequences[cmd_input_filename]
             # Extract the name of the outfile
             filename = path.basename(file_manager.filename)
@@ -114,6 +120,7 @@ class Scheduler:
         self.running_list = []
         self.waiting_list = []
         self.terminated_list = []
+        self.canceled_list = []
         self.max_processes = 1
         self.expected_behaviour = (None, None, None)
 
@@ -135,6 +142,35 @@ class Scheduler:
 
         job.status = "TERMINATED"
         self.terminated_list.append(job)
+
+        # Cancel subsumed jobs
+        for ss_job in job.subsumed_jobs:
+            self.cancel(ss_job)
+
+
+    def cancel(self, job):
+        # Cancel job
+        match job.status:
+            case "RUNNING":
+                process = self.processes[job]
+                process.kill()
+                self.running_list.remove(job)
+
+            case "NOT_READY" | "READY":
+                self.waiting_list.remove(job)
+
+            case "CANCELED":
+                return
+
+            case _:
+                self.terminated_list.remove(job)
+
+        job.status = "CANCELED"
+        self.canceled_list.append(job)
+
+        # cancel children
+        for child in job.child_jobs:
+            self.cancel(child)
 
 
     def is_running(self):
@@ -166,7 +202,7 @@ class Scheduler:
         job = self.waiting_list.pop(0)
         job.prepare_exec()
 
-        print(f"Running {job.cmd}")
+        print(f"-- Running {job.cmd}")
         job.exp_dir.save_cmd(job.cmd)
 
         # Run the job
@@ -182,11 +218,11 @@ class Scheduler:
             return_ok = self.expected_behaviour[0] == job.returncode
         stdout_ok = True
         if self.expected_behaviour[1] is not None:
-            stdout_ok = self.expected_behaviour[1] in self.stdout
+            stdout_ok = self.expected_behaviour[1] in job.stdout
         stderr_ok = True
         if self.expected_behaviour[2] is not None:
-            stderr_ok = self.expected_behaviour[2] in self.stderr
-
+            stderr_ok = self.expected_behaviour[2] in job.stderr
+        
         # If behaviour present
         return return_ok and stdout_ok and stderr_ok
 

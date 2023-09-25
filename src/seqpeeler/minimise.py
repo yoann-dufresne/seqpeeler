@@ -37,7 +37,10 @@ class Peeler:
         while len(mainscheduler.terminated_list) > 0:
             job = mainscheduler.terminated_list.pop(0)
 
-            # WARNING: Do not forget to save the best jobs while writting this code
+            if job.exp_content.size() < self.best_job.exp_content.size():
+                self.best_job = job
+
+            # TODO: Cancel subsumed jobs
 
             for j in job.next_jobs():
                 mainscheduler.submit_job(j)
@@ -73,21 +76,26 @@ class CompleteJob(Job):
         content.set_outputs(self.exp_content.output_files.keys())
         content.set_inputs(in_files)
 
-        jobs = []
+        self.child_jobs = []
         for idx in range(len(in_files)):
-            jobs.append(DeleteFilesJob(content, self.initial_cmd, self.result_dir, deletion_idx=idx))
+            # One delete job for each possible file
+            new_job = DeleteFilesJob(content, self.initial_cmd, self.result_dir, deletion_idx=idx)
 
-        return jobs
+            # Allow cancelation of job x if previous has a result: The previous result will be better due to previous sorting
+            for prev_job in self.child_jobs:
+                prev_job.set_subsumed_job(new_job)
+
+            self.child_jobs.append(new_job)
+
+        return self.child_jobs
 
 
 class DeleteFilesJob(Job):
     def __init__(self, exp_content, cmd, exp_outdir, deletion_idx=0):
-        self.files = [x for x in exp_content.input_sequences.values()]
-        self.files.sort(reverse=True, key=lambda x: x.total_seq_size)
         self.deletion_idx = deletion_idx
 
         delete_content = ExperimentContent()
-        for idx, input_manager in enumerate(self.files):
+        for idx, input_manager in enumerate(exp_content.input_sequences.values()):
             if idx != self.deletion_idx:
                 delete_content.set_input(input_manager)
             else:
@@ -98,7 +106,26 @@ class DeleteFilesJob(Job):
 
 
     def next_jobs(self):
-        return []
+        # Expected behaviour is not present
+        if not mainscheduler.is_behaviour_present(self):
+            self.clean()
+            return []
+
+        sequences = self.exp_content.ordered_inputs
+        # Nothing to delete after that job
+        if (len(sequences) == 1) or (self.deletion_idx == (len(sequences)-1)):
+            return []
+
+        self.child_jobs = []
+        for idx in range(self.deletion_idx, len(sequences)):
+            new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir, deletion_idx=idx)
+
+            # Allow cancelation of job x if previous has a result: The previous result will be better due to previous sorting
+            for prev_job in self.child_jobs:
+                prev_job.set_subsumed_job(new_job)
+
+            self.child_jobs.append(new_job)
+        return self.child_jobs
 
 
 

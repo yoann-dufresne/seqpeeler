@@ -46,3 +46,5 @@ if __name__ == "__main__":
 
 	for file in files:
 		read_file(file)
+
+	print("Program ended successfully")

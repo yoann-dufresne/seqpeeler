@@ -174,6 +174,9 @@ class ExperimentContent:
         for p in paths:
             self.output_files[p] = path.abspath(p)
 
+    def size(self):
+        return self.inputs_size
+
     def copy(self):
         copy = ExperimentContent()
 
@@ -181,31 +184,6 @@ class ExperimentContent:
         copy.output_files = {x: y for x, y in self.output_files.items()}
 
         return copy
-
-
-    def split_inputs(self):
-        if self.inputs_size == 1:
-            return []
-
-        middle_idx = self.inputs_size // 2
-        
-        sub_experiments = [ExperimentContent() for _ in range(3)]
-        for ec in sub_experiments:
-            ec.set_outputs(self.output_files.keys())
-
-        current_idx = 0
-        for filename in self.ordered_inputs:
-            manager = self.input_sequences[filename]
-
-            # Case 1: File on the left of the break point
-            if current_idx + manager.total_seq_size <= middle_idx:
-                pass
-            # Case 2: File on the right of the break point
-            elif current_idx > middle_idx:
-                pass
-            # Case 3: File including the break point
-            else:
-                pass
 
 
 class ExperimentDirectory:
