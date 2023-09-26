@@ -84,6 +84,7 @@ class CompleteJob(Job):
             # Allow cancelation of job x if previous has a result: The previous result will be better due to previous sorting
             for prev_job in self.child_jobs:
                 prev_job.set_subsumed_job(new_job)
+            new_job.set_subsumed_job(self)
 
             self.child_jobs.append(new_job)
 
@@ -123,6 +124,7 @@ class DeleteFilesJob(Job):
             # Allow cancelation of job x if previous has a result: The previous result will be better due to previous sorting
             for prev_job in self.child_jobs:
                 prev_job.set_subsumed_job(new_job)
+            new_job.set_subsumed_job(self)
 
             self.child_jobs.append(new_job)
         return self.child_jobs

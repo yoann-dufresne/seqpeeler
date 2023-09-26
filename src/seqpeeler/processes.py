@@ -16,7 +16,16 @@ class Job:
             initial_cmd (string): Command to run. [before being modified to run in the right directory]
     """
 
+    job_id = 0
+
+    def next_id():
+        nxt = Job.job_id
+        Job.job_id += 1
+        return nxt
+
+
     def __init__(self, exp_content, command, result_dir):
+        self.id = Job.next_id()
         self.exp_content = exp_content
         self.initial_cmd = command
         self.result_dir = result_dir
@@ -106,6 +115,12 @@ class Job:
 
         self.status = "READY"
 
+    def __hash__(self):
+        return self.id
+
+    def __eq__(self, other):
+        return other.id == self.id
+
 
 
 class Scheduler:
@@ -121,6 +136,7 @@ class Scheduler:
         self.waiting_list = []
         self.terminated_list = []
         self.canceled_list = []
+        self.processes = {}
         self.max_processes = 1
         self.expected_behaviour = (None, None, None)
 
@@ -133,12 +149,13 @@ class Scheduler:
         self.waiting_list.append(job)
 
 
-    def terminate_job(self, process, job):
+    def terminate_job(self, job):
+        process = self.processes[job]
         # Save stdout, stderr and return code
         job.save_triggers(process.returncode, process.stdout, process.stderr)
         
         # Join the process to properly close everything
-        process.communicate()
+        self.processes[job].communicate()
 
         job.status = "TERMINATED"
         self.terminated_list.append(job)
@@ -154,6 +171,7 @@ class Scheduler:
             case "RUNNING":
                 process = self.processes[job]
                 process.kill()
+                self.processes.pop(job)
                 self.running_list.remove(job)
 
             case "NOT_READY" | "READY":
@@ -162,8 +180,6 @@ class Scheduler:
             case "CANCELED":
                 return
 
-            case _:
-                self.terminated_list.remove(job)
 
         job.status = "CANCELED"
         self.canceled_list.append(job)
@@ -179,14 +195,18 @@ class Scheduler:
 
     def keep_running(self):
         # Verify the end of running jobs
-        new_running_list = []
-        for process, job in self.running_list:
-            if process.poll() is not None:
+        old_running_list = self.running_list
+        self.running_list = []
+        to_terminate = []
+        for job in old_running_list:
+            if self.processes[job].poll() is not None:
                 # Job is over
-                self.terminate_job(process, job)
+                to_terminate.append(job)
             else:
-                new_running_list.append((process, job))
-        self.running_list = new_running_list
+                self.running_list.append(job)
+
+        for j in to_terminate:
+            self.terminate_job(job)
 
         # Do nothing if the max allowed number of precesses are currently running
         if self.max_processes <= len(self.running_list) or len(self.waiting_list) == 0:
@@ -207,7 +227,8 @@ class Scheduler:
 
         # Run the job
         process = Popen(args=job.cmd, stdout=PIPE, stderr=PIPE, shell=True)
-        self.running_list.append((process, job))
+        self.running_list.append(job)
+        self.processes[job] = process
         job.status = "RUNNING"
 
 

@@ -120,6 +120,6 @@ def main():
     peeler = Peeler(args)
     peeler.reduce_file_set(file_managers)
     
-    print(peeler.best_job.cmd)
+    print("BEST JOB:", peeler.best_job.cmd)
 
     duration = time() - starttime
