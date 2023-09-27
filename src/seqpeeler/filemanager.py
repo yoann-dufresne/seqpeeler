@@ -6,7 +6,8 @@ from shutil import rmtree
 class SequenceHolder:
     """ Remembers the absolute positions of a sequence in a file (in Bytes)
     """
-    def __init__(self, left, right, file):
+    def __init__(self, header, left, right, file):
+        self.header = header
         self.left = left # First byte of the sequence
         self.right = right # Last byte of the sequence
         self.file = file
@@ -15,10 +16,10 @@ class SequenceHolder:
         return self.right - self.left + 1
 
     def left_split(self, position):
-        return SequenceHolder(self.left, middle, self.file)
+        return SequenceHolder(self.header, self.left, middle, self.file)
 
     def right_split(self, position):
-        return SequenceHolder(middle, self.right, self.file)
+        return SequenceHolder(self.header, middle, self.right, self.file)
 
     def divide(self, position):
         if not (self.left <= position <= self.right):
@@ -27,8 +28,11 @@ class SequenceHolder:
         middle = (self.right + self.left) // 2
         return [self.left_split(), self.right_split()]
 
+    def create_header(self):
+        return f"{self.header} $$$ left={self.left} right={self.right}"
+
     def copy(self):
-        return SequenceHolder(self.left, self.right, self.file)
+        return SequenceHolder(self.header, self.left, self.right, self.file)
 
     def __eq__(self, other):
         return self.size() == other.size()
@@ -53,7 +57,6 @@ class FileManager:
         # Transform file path to absolute
         self.original_name = filename
         self.filename = path.abspath(filename)
-        self.index = None
         self.sequence_list = []
         self.sequence_cumulative_size = []
         self.total_seq_size = 0
@@ -90,21 +93,60 @@ class FileManager:
         """
         Perform a split calculation of the file and return 3 possibilities: left part, right part, both parts with the middle sequence splitted into 2 sequences
         """
+        # If no position is given, compute the middle of the file as position
         if position is None:
             position = self.total_seq_size // 2
         elif not (0 <= position < self.total_seq_size):
             raise IndexError(f"Position {position} out of file {self.filename}")
 
-        middle_seq = self._find_position(position)
+        middle_seq_idx = self._find_position(position)
         middle_seq_offset = position
-        if middle_seq != 0:
-            middle_seq_offset -= self.sequence_cumulative_size[middle_seq-1]
+        middle_cumul_size = self.sequence_cumulative_size[middle_seq_idx]
+        if middle_seq_idx != 0:
+            middle_seq_offset -= self.sequence_cumulative_size[middle_seq_idx-1]
 
-        complete_split = FileManager(self.filename)
+        splits = [FileManager(self.filename) for _ in range(3)]
+        for fm in splits:
+            sm.verbose = self.verbose
+            sm.original_name = self.original_name
+        left_split, right_split, complete_split = splits
+
         # Create left split
-        left_split = FileManager(self.filename)
+        if middle_seq_idx != 0:
+            left_split.sequence_list = self.sequence_list[:middle_seq_idx]
+            left_split.sequence_cumulative_size = self.sequence_cumulative_size[:middle_seq_idx]
+            left_split.total_seq_size = self.sequence_cumulative_size[middle_seq_idx-1]
+
+        # Split the middle sequence
+        middle_seq = self.sequence_list[middle_seq_idx]
+        if middle_seq.size() > 1:
+            middle_left, middle_right = middle_seq.divide()
+            
+            left_split.sequence_list.append(middle_left)
+            left_split.sequence_cumulative_size.append(left_split.total_seq_size + middle_left.size())
+            left_split.total_seq_size = left_split.sequence_cumulative_size[-1]
+
+            right_split.sequence_list.append(middle_right)
+            right_split.sequence_cumulative_size.append(middle_right.size())
+            right_split.total_seq_size = middle_right.size()
+
         # Create right split
-        right_split = FileManager(self.filename)
+        if middle_seq_idx != len(self.sequence_list)-1:
+            right_split.sequence_list += self.sequence_list[middle_seq_idx+1:]
+            right_split.sequence_cumulative_size = 
+                ([right_split.total_seq_size] if len(right_split.sequence_list) > 0 else [])
+                + [x - middle_cumul_size + right_split.total_seq_size
+                    for x in self.sequence_cumulative_size[middle_seq_idx+1:]]
+            right_split.total_seq_size = self.sequence_cumulative_size[-1]
+
+        # Create a full file with the central sequence splitted
+        complete_split.sequence_list = left_split.sequence_list + right_split.sequence_list
+        complete_split.sequence_cumulative_size =
+            [x for x in left_split.sequence_cumulative_size]
+            + [x + left_split.sequence_cumulative_size[-1] for x in right_split.sequence_cumulative_size]
+        complete_split.total_seq_size = complete_split.sequence_cumulative_size[-1]
+
+        return splits
 
 
     def __lt__(self, other):
@@ -114,28 +156,24 @@ class FileManager:
     def __repr__(self):
         if self.verbose:
             s = f"FileManager({self.filename}):\n"
-            s += '\n'.join([f"\t{header}: {str(self.index[header])}" for header in self.index])
+            s += '\n'.join([f"\t{seq_hold.create_header()}: {str(seq_hold)}" for seq_hold in self.sequence_list])
             return s
         else:
-            return f"FileManager({self.filename}): {len(self.index)} indexed sequences"
+            return f"FileManager({self.filename}): {len(self.sequence_list)} indexed sequences"
 
 
-    def _index_sequence(self, header, seqstart, filepos):
+    def _create_holder(self, header, seqstart, filepos):
         if header is not None:
-            if header in self.index:
-                # Multiple identical headers in the file
-                print(f"WARNING: header {header} is present more than once in the file {filename}. Only hte last one have been kept", file=stderr)
-                self.total_seq_size -= self.index[header].size()
-            self.index[header] = SequenceHolder(seqstart, filepos-1, self)
-            self.total_seq_size += self.index[header].size()
+            seq_holder = SequenceHolder(header, seqstart, filepos-1, self)
+            self.sequence_list.append(seq_holder)
+            self.total_seq_size += seq_holder.size()
             self.sequence_cumulative_size.append(self.total_seq_size)
 
 
     def index_sequences(self):
-        """ Index the positions of the sequences in the file.
-            TODO: keep track of the sequence order
+        """ Read the positions of the sequences in the file.
         """
-        self.index = {}
+        self.sequence_list = []
 
         with open(self.filename) as f:
             header = None
@@ -146,7 +184,7 @@ class FileManager:
                 # new header
                 if line[0] == '>':
                     # register previous seq
-                    self._index_sequence(header, seqstart, filepos)
+                    self._create_holder(header, seqstart, filepos)
 
                     # set new seq values
                     header = line[1:].strip()
@@ -156,19 +194,17 @@ class FileManager:
                 filepos += len(line)
 
             # last sequence
-            self._index_sequence(header, seqstart, filepos)
+            self._create_holder(header, seqstart, filepos)
 
 
     def copy(self):
         copy = FileManager(self.filename)
         
-        copy.index = None if self.index is None else {}
-        if self.index is not None:
-            for name in self.index:
-                copy.index[name] = self.index[name].copy()
+        copy.sequence_list = [x for x in self.sequence_cumulative_size]
+        copy.sequence_cumulative_size = [x for x in self.sequence_cumulative_size]
 
         copy.total_seq_size = self.total_seq_size
-        other.verbose = self.verbose
+        copy.verbose = self.verbose
 
 
     def extract(self, dest_file):
