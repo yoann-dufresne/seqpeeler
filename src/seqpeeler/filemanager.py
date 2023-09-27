@@ -14,6 +14,19 @@ class SequenceHolder:
     def size(self):
         return self.right - self.left + 1
 
+    def left_split(self, position):
+        return SequenceHolder(self.left, middle, self.file)
+
+    def right_split(self, position):
+        return SequenceHolder(middle, self.right, self.file)
+
+    def divide(self, position):
+        if not (self.left <= position <= self.right):
+            raise IndexError("Division out of sequence")
+
+        middle = (self.right + self.left) // 2
+        return [self.left_split(), self.right_split()]
+
     def copy(self):
         return SequenceHolder(self.left, self.right, self.file)
 
@@ -42,8 +55,56 @@ class FileManager:
         self.filename = path.abspath(filename)
         self.index = None
         self.sequence_list = []
+        self.sequence_cumulative_size = []
         self.total_seq_size = 0
         self.verbose = False
+
+
+    def _find_position(self, position):
+        """ Compute the sequence in which there is the requested position.
+
+            Parameters:
+                position: Position inside of the sequence
+
+            Return:
+                Index of the sequence inside of the file
+        """
+        # If first sequence
+        if position < self.sequence_cumulative_size[0]:
+            return 0
+
+        # Dichotomic search
+        left = 1, right = len(self.sequence_list)-1
+        while True:
+            middle = (left + right) // 2
+            # Is it the middle ?
+            if self.sequence_cumulative_size[middle-1] <= position < self.sequence_cumulative_size[middle]:
+                return middle
+            elif position < self.sequence_cumulative_size[middle-1]:
+                right = middle - 1
+            elif position >= self.sequence_cumulative_size[middle]:
+                left = middle + 1
+
+
+    def file_split(self, position=None):
+        """
+        Perform a split calculation of the file and return 3 possibilities: left part, right part, both parts with the middle sequence splitted into 2 sequences
+        """
+        if position is None:
+            position = self.total_seq_size // 2
+        elif not (0 <= position < self.total_seq_size):
+            raise IndexError(f"Position {position} out of file {self.filename}")
+
+        middle_seq = self._find_position(position)
+        middle_seq_offset = position
+        if middle_seq != 0:
+            middle_seq_offset -= self.sequence_cumulative_size[middle_seq-1]
+
+        complete_split = FileManager(self.filename)
+        # Create left split
+        left_split = FileManager(self.filename)
+        # Create right split
+        right_split = FileManager(self.filename)
 
 
     def __lt__(self, other):
@@ -67,6 +128,7 @@ class FileManager:
                 self.total_seq_size -= self.index[header].size()
             self.index[header] = SequenceHolder(seqstart, filepos-1, self)
             self.total_seq_size += self.index[header].size()
+            self.sequence_cumulative_size.append(self.total_seq_size)
 
 
     def index_sequences(self):

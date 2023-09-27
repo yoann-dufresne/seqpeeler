@@ -130,6 +130,14 @@ class DeleteFilesJob(Job):
         return self.child_jobs
 
 
+class DichotomicJob(self):
+    def __init__(self):
+        pass
+
+    def next_jobs(self):
+        pass
+
+
 
 
 
