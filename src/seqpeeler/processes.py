@@ -40,7 +40,7 @@ class Job:
         self.exp_infile_names = {}
         self.exp_outfile_names = {}
 
-        self.child_jobs = []
+        self.children_jobs = []
         self.subsumed_jobs = []
 
 
@@ -185,7 +185,7 @@ class Scheduler:
         self.canceled_list.append(job)
 
         # cancel children
-        for child in job.child_jobs:
+        for child in job.children_jobs:
             self.cancel(child)
 
 

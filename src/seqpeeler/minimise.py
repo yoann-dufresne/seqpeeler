@@ -76,19 +76,19 @@ class CompleteJob(Job):
         content.set_outputs(self.exp_content.output_files.keys())
         content.set_inputs(in_files)
 
-        self.child_jobs = []
+        self.children_jobs = []
         for idx in range(len(in_files)):
             # One delete job for each possible file
             new_job = DeleteFilesJob(content, self.initial_cmd, self.result_dir, deletion_idx=idx)
 
             # Allow cancelation of job x if previous has a result: The previous result will be better due to previous sorting
-            for prev_job in self.child_jobs:
+            for prev_job in self.children_jobs:
                 prev_job.set_subsumed_job(new_job)
             new_job.set_subsumed_job(self)
 
-            self.child_jobs.append(new_job)
+            self.children_jobs.append(new_job)
 
-        return self.child_jobs
+        return self.children_jobs
 
 
 class DeleteFilesJob(Job):
@@ -117,26 +117,88 @@ class DeleteFilesJob(Job):
         if (len(sequences) == 1) or (self.deletion_idx == (len(sequences)-1)):
             return []
 
-        self.child_jobs = []
+        self.children_jobs = []
         for idx in range(self.deletion_idx, len(sequences)):
             new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir, deletion_idx=idx)
 
             # Allow cancelation of job x if previous has a result: The previous result will be better due to previous sorting
-            for prev_job in self.child_jobs:
+            for prev_job in self.children_jobs:
                 prev_job.set_subsumed_job(new_job)
             new_job.set_subsumed_job(self)
 
-            self.child_jobs.append(new_job)
-        return self.child_jobs
+            self.children_jobs.append(new_job)
+        return self.children_jobs
 
 
-class DichotomicJob(self):
+class DichotomicFileJob(Job):
+    def from_other_job(job):
+        # General variables
+        jobs = []
+        base_content = job.exp_content.copy()
+        
+        input_of_interest = job.exp_content.input_sequences[0]
+        # Get 3 possibilities of file reduction
+        left, right, split = input_of_interest.file_split()
+
+        # Generate left job
+        left_job = None
+        if left.total_seq_size > 0:
+            left_content = base_content.copy()
+            left_content.replace_input(left, 0)
+            left_job = DichotomicFileJob(left_content, job.initial_cmd, job.result_dir, file_idx=0)
+            left_job.set_subsumed_job(job)
+            job.children_jobs.append(left_job)
+            jobs.append(left_job)
+
+        # Generate right job
+        right_job = None
+        if right.total_seq_size > 0:
+            right_content = base_content.copy()
+            right_content.replace_input(right, 0)
+            right_job = DichotomicFileJob(right_content, job.initial_cmd, job.result_dir, file_idx=0)
+            right_job.set_subsumed_job(job)
+            job.children_jobs.append(right_job)
+            jobs.append(right_job)
+            # Cancellation dependancies
+            if left_job is not None:
+                left_job.set_subsumed_job(right_job)
+
+        # Generate splitted sequence job
+        split_content = base_content
+        split_content.replace_input(split, 0)
+        split_job = SplitFileJob(split, job.initial_cmd, job.result_dir, file_idx=0)
+        split_job.set_subsumed_job(job)
+        jobs.append()
+        job.children_jobs.append(split_job)
+        if left_job is not None:
+            left_job.set_subsumed_job(split_job)
+        if right_job is not None:
+            right_job.set_subsumed_job(split_job)
+
+        return jobs
+
+    def __init__(self, exp_content, cmd, exp_outdir, file_idx=0):
+        self.file_idx = file_idx
+        super().__init__(exp_content, cmd, out_directory)
+
+    def next_jobs(self):
+        return []
+
+
+class SplitFileJob(DichotomicFileJob):
+    def __init__(self, exp_content, cmd, exp_outdir, file_idx=0):
+        super().__init__(exp_content, cmd, out_directory, file_idx=file_idx)
+
+    def next_jobs(self):
+        return []
+
+
+class DichotomicSequenceJob(DichotomicFileJob):
     def __init__(self):
         pass
 
     def next_jobs(self):
-        pass
-
+        return []
 
 
 

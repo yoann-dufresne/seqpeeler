@@ -259,6 +259,18 @@ class ExperimentContent:
         self.output_files = {}
         self.inputs_size = 0
 
+    def replace_input(self, file_manager, input_idx=0):
+        if input_idx >= len(self.input_sequences):
+            raise IndexError(f"Too few files for index {input_idx}")
+
+        # remove old file
+        old_fm = self.input_sequences.pop(self.ordered_inputs[input_idx])
+        self.inputs_size -= old_fm.total_seq_size
+        # add new file
+        self.input_sequences[file_manager.original_name] = file_manager
+        self.ordered_inputs[input_idx] = file_manager.original_name
+        self.inputs_size += file_manager.total_seq_size
+
     def set_input(self, file_manager):
         self.ordered_inputs.append(file_manager.original_name)
         self.input_sequences[file_manager.original_name] = file_manager
