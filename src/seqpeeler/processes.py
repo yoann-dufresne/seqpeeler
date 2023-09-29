@@ -70,6 +70,10 @@ class Job:
         self.subsumed_jobs.append(job)
 
 
+    def next_jobs(present_behaviour=True):
+        raise NotImplementedError()
+
+
     def prepare_exec(self):
         """
         Setup a directory for the job inside of the result_dir
@@ -114,6 +118,22 @@ class Job:
             self.cmd.replace(cmd_filepath, newpath)
 
         self.status = "READY"
+
+    def is_behaviour_present(self, expected_returncode=None, expected_stdout=None, expected_stderr=None):
+        # Is the expected behaviour present ?
+        return_ok = True
+        if expected_returncode is not None:
+            return_ok = expected_returncode == self.returncode
+        stdout_ok = True
+        if expected_stdout is not None:
+            stdout_ok = expected_stdout in self.stdout
+        stderr_ok = True
+        if expected_stderr is not None:
+            stderr_ok = expected_stderr in self.stderr
+        
+        # If behaviour present
+        return return_ok and stdout_ok and stderr_ok
+
 
     def __hash__(self):
         return self.id
@@ -230,22 +250,6 @@ class Scheduler:
         self.running_list.append(job)
         self.processes[job] = process
         job.status = "RUNNING"
-
-
-    def is_behaviour_present(self, job):
-        # Is the expected behaviour present ?
-        return_ok = True
-        if self.expected_behaviour[0] is not None:
-            return_ok = self.expected_behaviour[0] == job.returncode
-        stdout_ok = True
-        if self.expected_behaviour[1] is not None:
-            stdout_ok = self.expected_behaviour[1] in job.stdout
-        stderr_ok = True
-        if self.expected_behaviour[2] is not None:
-            stderr_ok = self.expected_behaviour[2] in job.stderr
-        
-        # If behaviour present
-        return return_ok and stdout_ok and stderr_ok
 
 
 mainscheduler = Scheduler()

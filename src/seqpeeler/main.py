@@ -101,7 +101,6 @@ def main():
 
     # get the arguments
     desired_output = (args.returncode, args.stdout, args.stderr)
-    mainscheduler.set_expected_job_behaviour(*desired_output)
 
     # Parse input sequences
     seqfiles = args.fasta_list if args.fasta_list is not None else fof_to_list(args.file_of_files)

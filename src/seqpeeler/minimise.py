@@ -40,9 +40,17 @@ class Peeler:
             if job.exp_content.size() < self.best_job.exp_content.size():
                 self.best_job = job
 
-            # TODO: Cancel subsumed jobs
+            present_behaviour = job.is_behaviour_present(*self.expected)
+            if present_behaviour:
+                for subsumed in job.subsumed_jobs:
+                    mainscheduler.cancel(subsumed)
+                    subsumed.clean()
+            else:
+                for child in job.children_jobs:
+                    mainscheduler.cancel(child)
+                    child.clean()
 
-            for j in job.next_jobs():
+            for j in job.next_jobs(present_behaviour=present_behaviour):
                 mainscheduler.submit_job(j)
 
 
@@ -55,12 +63,10 @@ class CompleteJob(Job):
         super().__init__(exp_content, cmd, out_directory)
 
 
-    def next_jobs(self):
+    def next_jobs(self, present_behaviour=False):
         # Expected behaviour is not present
-        if not mainscheduler.is_behaviour_present(self):
+        if not present_behaviour:
             return []
-
-        # Expected behaviour is present
 
         # Only 1 file => Try to reduce its sequences
         if len(self.exp_content.input_sequences) == 1:
@@ -76,19 +82,11 @@ class CompleteJob(Job):
         content.set_outputs(self.exp_content.output_files.keys())
         content.set_inputs(in_files)
 
-        self.children_jobs = []
-        for idx in range(len(in_files)):
-            # One delete job for each possible file
-            new_job = DeleteFilesJob(content, self.initial_cmd, self.result_dir, deletion_idx=idx)
+        new_job = DeleteFilesJob(content, self.initial_cmd, self.result_dir, deletion_idx=0)
+        new_job.set_subsumed_job(self)
+        self.children_jobs.append(new_job)
 
-            # Allow cancelation of job x if previous has a result: The previous result will be better due to previous sorting
-            for prev_job in self.children_jobs:
-                prev_job.set_subsumed_job(new_job)
-            new_job.set_subsumed_job(self)
-
-            self.children_jobs.append(new_job)
-
-        return self.children_jobs
+        return [new_job]
 
 
 class DeleteFilesJob(Job):
@@ -106,28 +104,33 @@ class DeleteFilesJob(Job):
         super().__init__(delete_content, cmd, exp_outdir)
 
 
-    def next_jobs(self):
+    def next_jobs(self, present_behaviour=False):
         # Expected behaviour is not present
-        if not mainscheduler.is_behaviour_present(self):
+        if not present_behaviour:
             self.clean()
             return []
 
         sequences = self.exp_content.ordered_inputs
         # Nothing to delete after that job
-        if (len(sequences) == 1) or (self.deletion_idx == (len(sequences)-1)):
+        if (len(sequences) == 1):
+            # TODO: Dichotomic job
             return []
 
-        self.children_jobs = []
-        for idx in range(self.deletion_idx, len(sequences)):
-            new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir, deletion_idx=idx)
-
-            # Allow cancelation of job x if previous has a result: The previous result will be better due to previous sorting
-            for prev_job in self.children_jobs:
-                prev_job.set_subsumed_job(new_job)
+        new_job = None
+        if present_behaviour:
+            new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir,
+                                        deletion_idx=self.deletion_idx)
             new_job.set_subsumed_job(self)
+        else:
+            if self.deletion_idx == (len(sequences)-1):
+                #TODO: Dichotomic job
+                return []
 
-            self.children_jobs.append(new_job)
-        return self.children_jobs
+            new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir, 
+                                        deletion_idx=self.deletion_idx + 1)
+        
+        self.children_jobs.append(new_job)
+        return [new_job]
 
 
 class DichotomicFileJob(Job):
@@ -181,8 +184,11 @@ class DichotomicFileJob(Job):
         self.file_idx = file_idx
         super().__init__(exp_content, cmd, out_directory)
 
-    def next_jobs(self):
-        return []
+    def next_jobs(self, present_behaviour=False):
+        if present_behaviour:
+            return DichotomicFileJob.from_other_job(self)
+        else:
+            return []
 
 
 class SplitFileJob(DichotomicFileJob):
