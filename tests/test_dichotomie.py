@@ -39,18 +39,32 @@ class TestSequences:
 				assert right.left == split_position
 				assert right.right == len(self.seq1) - 1
 
-	def test_dicho_list_1(self):
+	def test_dicho_list_right(self):
 		self.init()
 
 		split_position = 11
 		left, right = self.seq_list.split(split_position)
-		assert len(left) == 11
-		assert len(right) == 12
+		assert len(left) == split_position
+		assert len(right) == len(self.seq_list) - split_position
 
-	def test_dicho_list_2(self):
+	def test_dicho_list_left(self):
 		self.init()
 
 		split_position = 4
 		left, right = self.seq_list.split(split_position)
-		assert len(left) == 4
-		assert len(right) == 19
+		assert len(left) == split_position
+		assert len(right) == len(self.seq_list) - split_position
+
+	def test_dicho_list_0_split(self):
+		self.init()
+
+		left, right = self.seq_list.split(0)
+		assert left is None
+		assert len(right) == len(self.seq_list)
+
+	def test_dicho_list_len_split(self):
+		self.init()
+
+		left, right = self.seq_list.split(len(self.seq_list))
+		assert len(left) == len(self.seq_list)
+		assert right is None
