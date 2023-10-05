@@ -18,6 +18,9 @@ class SequenceList:
     def __len__(self):
         return sum(len(x) for x in self.seq_lists)
 
+    def __repr__(self):
+        return ", ".join(str(x) for x in self.seq_lists)
+
     def nucl_size(self):
         if len(self.seq_lists) == 0:
             return 0
@@ -35,7 +38,8 @@ class SequenceList:
 
     def split(self, position):
         split_lst_found = False
-        left, mmiddle, right = 0, len(self.seq_lists) // 2, len(self.seq_lists)
+        left, right = 0, len(self.seq_lists) - 1
+        middle = (left + right) // 2
         lst_to_split = None
 
         if position == 0:
@@ -102,15 +106,15 @@ class SequenceHolder(SequenceList):
         return self.right - self.left + 1
 
     def left_split(self, size):
-        left = SequenceHolder(self.header, self.left, size-1, self.file)
-        if len(left) <= 0 or left.right > self.right:
+        left = SequenceHolder(self.header, self.left, self.left+size-1, self.file)
+        if left.nucl_size() <= 0 or left.right > self.right:
             return None
         else:
             return left
 
     def right_split(self, size):
-        right = SequenceHolder(self.header, self.right - size + 1, self.right, self.file)
-        if len(right) <= 0 or right.left < self.left:
+        right = SequenceHolder(self.header, self.right-size+1, self.right, self.file)
+        if right.left < 0 or right.left > self.right:
             return None
         else:
             return right

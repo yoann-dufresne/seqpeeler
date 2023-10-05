@@ -27,8 +27,7 @@ class TestSequences:
 
 		for split_position in range(len(self.seq1)+1):
 			left, right = self.seq1.split(split_position)
-			print("split_position", split_position)
-
+			
 			if split_position == 0:
 				assert left is None
 			else:
