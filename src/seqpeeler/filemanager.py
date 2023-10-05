@@ -16,7 +16,10 @@ class SequenceList:
         return cpy
 
     def __len__(self):
-        if len(self.cumulative_size) == 0:
+        return sum(len(x) for x in self.seq_lists)
+
+    def nucl_size(self):
+        if len(self.seq_lists) == 0:
             return 0
 
         return self.cumulative_size[-1]
@@ -24,8 +27,8 @@ class SequenceList:
     def add_sequence_list(self, seq_lst_obj):
         if seq_lst_obj is None:
             return
+        self.cumulative_size.append(self.nucl_size() + seq_lst_obj.nucl_size())
         self.seq_lists.append(seq_lst_obj)
-        self.cumulative_size.append(len(self) + len(seq_lst_obj))
 
     def add_sequence_holder(self, seq_holder):
         self.add_sequence_list(seq_holder)
@@ -37,7 +40,7 @@ class SequenceList:
 
         if position == 0:
             return None, self.copy()
-        elif position == len(self):
+        elif position == self.nucl_size():
             return self.copy(), None
 
         # Search for the list to split (Dichotomic)
@@ -70,14 +73,14 @@ class SequenceList:
         right_list.add_sequence_list(right_split)
         # after the middle list
         right_list.seq_lists.extend(self.seq_lists[middle+1:])
-        size_modifier = self.cumulative_size[middle] - len(right_split)
+        size_modifier = self.cumulative_size[middle] - right_split.nucl_size()
         right_list.cumulative_size.extend(x - size_modifier for x in self.cumulative_size[middle+1:])
 
         # Depth reduction step
-        while type(left_list) == SequenceList and len(left_list.seq_lists) == 1:
+        while type(left_list) == SequenceList and len(left_list) == 1:
             left_list = left_list.seq_lists[0]
 
-        while type(right_list) == SequenceList and len(right_list.seq_lists) == 1:
+        while type(right_list) == SequenceList and len(right_list) == 1:
             right_list = right_list.seq_lists[0]
 
         return left_list, right_list
@@ -93,6 +96,9 @@ class SequenceHolder(SequenceList):
         self.file = file
 
     def __len__(self):
+        return 1
+
+    def nucl_size(self):
         return self.right - self.left + 1
 
     def left_split(self, size):
@@ -110,7 +116,9 @@ class SequenceHolder(SequenceList):
             return right
 
     def split(self, position):
-        return self.left_split(position), self.right_split(len(self) - position)
+        left = self.left_split(position) if position > 0 else None
+        right = self.right_split(self.nucl_size() - position) if position < self.right+1 else None
+        return left, right
 
     def create_header(self):
         return f"{self.header} $$$ left={self.left} right={self.right}"
@@ -149,6 +157,9 @@ class FileManager:
     def __len__(self):
         return len(self.sequence_list)
 
+    def nucl_size(self):
+        return self.sequence_list.nucl_size()
+
     def __lt__(self, other):
         return len(self.sequence_list) < len(other.sequence_list)
 
@@ -164,13 +175,13 @@ class FileManager:
     def _register_holder(self, header, seqstart, filepos):
         if header is not None:
             seq_holder = SequenceHolder(header, seqstart, filepos-1, self)
-            self.sequence_list.append(seq_holder)
+            self.sequence_list.add_sequence_holder(seq_holder)
 
 
     def index_sequences(self):
         """ Read the positions of the sequences in the file.
         """
-        self.sequence_list = []
+        self.sequence_list = SequenceList()
 
         with open(self.filename) as f:
             header = None
