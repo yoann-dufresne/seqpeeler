@@ -8,6 +8,7 @@ class SequenceList:
     def __init__(self):
         self.seq_lists = []
         self.cumulative_size = []
+        self.current_iterator = None
 
     def copy(self):
         cpy = SequenceList()
@@ -20,6 +21,27 @@ class SequenceList:
 
     def __repr__(self):
         return ", ".join(str(x) for x in self.seq_lists)
+
+    def __iter__(self):
+        self.iter_idx = 0
+        return self
+
+    def __next__(self):
+        if 0 <= self.iter_idx < len(self.seq_lists):
+            # Init sub-iterator if needed
+            if self.current_iterator is None:
+                self.current_iterator = self.seq_lists[self.iter_idx].__iter__()
+            try:
+                # Iterate the sub-iterator
+                return self.current_iterator.__next__()
+            except StopIteration:
+                # Iterate current iterator and retry
+                self.iter_idx += 1
+                self.current_iterator = None
+                return self.__next__()
+        else:
+            # Stop iteration at the end of the list
+            raise StopIteration
 
     def nucl_size(self):
         if len(self.seq_lists) == 0:
@@ -101,6 +123,17 @@ class SequenceHolder(SequenceList):
 
     def __len__(self):
         return 1
+
+    def __iter__(self):
+        self.iterable = True
+        return self
+
+    def __next__(self):
+        if self.iterable:
+            self.iterable = False
+            return self
+        else:
+            raise StopIteration
 
     def nucl_size(self):
         return self.right - self.left + 1
@@ -231,7 +264,7 @@ class FileManager:
 
                 # Write sequence
                 origin.seek(seq_holder.left, SEEK_SET)
-                to_read = seq_holder.size()
+                to_read = seq_holder.nucl_size()
                 last_char_is_return = False
                 while to_read > 0:
                     # Read by chunk to avoir large RAM
@@ -272,16 +305,16 @@ class ExperimentContent:
 
         # remove old file
         old_fm = self.input_sequences.pop(self.ordered_inputs[input_idx])
-        self.inputs_size -= old_fm.total_seq_size
+        self.inputs_size -= old_fm.nucl_size()
         # add new file
         self.input_sequences[file_manager.original_name] = file_manager
         self.ordered_inputs[input_idx] = file_manager.original_name
-        self.inputs_size += file_manager.total_seq_size
+        self.inputs_size += file_manager.nucl_size()
 
     def set_input(self, file_manager):
         self.ordered_inputs.append(file_manager.original_name)
         self.input_sequences[file_manager.original_name] = file_manager
-        self.inputs_size += file_manager.total_seq_size
+        self.inputs_size += file_manager.nucl_size()
 
     def set_inputs(self, file_managers):
         for fm in file_managers:
