@@ -158,11 +158,6 @@ class Scheduler:
         self.canceled_list = []
         self.processes = {}
         self.max_processes = 1
-        self.expected_behaviour = (None, None, None)
-
-
-    def set_expected_job_behaviour(self, returncode, stdout, stderr):
-        self.expected_behaviour = (returncode, stdout, stderr)
 
 
     def submit_job(self, job):
@@ -199,7 +194,6 @@ class Scheduler:
 
             case "CANCELED":
                 return
-
 
         job.status = "CANCELED"
         self.canceled_list.append(job)

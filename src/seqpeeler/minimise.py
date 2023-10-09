@@ -5,6 +5,21 @@ from seqpeeler.filemanager import ExperimentDirectory, ExperimentContent
 from seqpeeler.processes import Job, mainscheduler
 
 
+class PeelerArgs:
+    def __init__(self):
+        self.inputs = []
+        self.outputs = []
+        self.fof = None
+        self.cmd = None
+
+        self.returncode = None
+        self.stderr = None
+        self.stdout = None
+
+        self.result_dir = None
+        self.verbose = False
+        self.keep = False
+
 class Peeler:
 
     def __init__(self, args):
@@ -15,16 +30,16 @@ class Peeler:
         self.expected = (args.returncode, args.stdout, args.stderr)
 
         self.best_job = None
-
     
-    def reduce_file_set(self, file_managers):
+    def reduce_file_set(self):
+        file_managers = self.args.inputs
         # Prepare the context of exec
         exp_content = ExperimentContent()
         exp_content.set_inputs(file_managers)
-        exp_content.set_outputs(self.args.outfilenames)
+        exp_content.set_outputs(self.args.outputs)
 
         # Create the first job (entire files)
-        job = CompleteJob(exp_content, self.args.command_line, self.args.outdir)
+        job = CompleteJob(exp_content, self.args.cmd, self.args.result_dir)
         mainscheduler.submit_job(job)
         self.best_job = job
 
@@ -32,23 +47,26 @@ class Peeler:
             mainscheduler.keep_running()
             self.schedule_next_jobs()
 
-    
     def schedule_next_jobs(self):
         while len(mainscheduler.terminated_list) > 0:
             job = mainscheduler.terminated_list.pop(0)
 
-            if job.exp_content.size() < self.best_job.exp_content.size():
-                self.best_job = job
-
             present_behaviour = job.is_behaviour_present(*self.expected)
             if present_behaviour:
+                # Save best job
+                if job.exp_content.size() < self.best_job.exp_content.size():
+                    self.best_job = job
+
                 for subsumed in job.subsumed_jobs:
                     mainscheduler.cancel(subsumed)
-                    subsumed.clean()
+                    print("keep", self.args.keep)
+                    if not self.args.keep:
+                        subsumed.clean()
             else:
                 for child in job.children_jobs:
                     mainscheduler.cancel(child)
-                    child.clean()
+                    if not self.args.keep:
+                        child.clean()
 
             for j in job.next_jobs(present_behaviour=present_behaviour):
                 mainscheduler.submit_job(j)
@@ -61,7 +79,6 @@ class CompleteJob(Job):
 
     def __init__(self, exp_content, cmd, out_directory):
         super().__init__(exp_content, cmd, out_directory)
-
 
     def next_jobs(self, present_behaviour=False):
         # Expected behaviour is not present
@@ -90,8 +107,9 @@ class CompleteJob(Job):
 
 
 class DeleteFilesJob(Job):
-    def __init__(self, exp_content, cmd, exp_outdir, deletion_idx=0):
+    def __init__(self, exp_content, cmd, result_dir, deletion_idx=0):
         self.deletion_idx = deletion_idx
+        self.parent_content = exp_content
 
         delete_content = ExperimentContent()
         for idx, input_manager in enumerate(exp_content.input_sequences.values()):
@@ -101,33 +119,31 @@ class DeleteFilesJob(Job):
                 cmd = cmd.replace(input_manager.original_name, "").replace("  ", " ")
         delete_content.set_outputs(exp_content.output_files.keys())
         
-        super().__init__(delete_content, cmd, exp_outdir)
-
+        super().__init__(delete_content, cmd, result_dir)
 
     def next_jobs(self, present_behaviour=False):
+        new_job = None
         # Expected behaviour is not present
         if not present_behaviour:
-            self.clean()
-            return []
-
-        sequences = self.exp_content.ordered_inputs
-        # Nothing to delete after that job
-        if (len(sequences) == 1):
-            # TODO: Dichotomic job
-            return []
-
-        new_job = None
-        if present_behaviour:
-            new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir,
-                                        deletion_idx=self.deletion_idx)
-            new_job.set_subsumed_job(self)
-        else:
-            if self.deletion_idx == (len(sequences)-1):
-                #TODO: Dichotomic job
+            if self.deletion_idx < len(self.parent_content.ordered_inputs) - 1:
+                new_job = DeleteFilesJob(self.parent_content, self.initial_cmd, self.result_dir,
+                                        deletion_idx=self.deletion_idx+1)
+                new_job.set_subsumed_job(self)
+            else:
                 return []
 
-            new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir, 
-                                        deletion_idx=self.deletion_idx + 1)
+        # Expected behaviour present
+        else:
+            sequences = self.exp_content.ordered_inputs
+            # Nothing to delete after that job
+            if (len(sequences) == 1):
+                # TODO: Dichotomic job
+                return []
+
+            if present_behaviour:
+                new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir,
+                                            deletion_idx=self.deletion_idx)
+                new_job.set_subsumed_job(self)
         
         self.children_jobs.append(new_job)
         return [new_job]
@@ -185,14 +201,16 @@ class DichotomicFileJob(Job):
         super().__init__(exp_content, cmd, out_directory)
 
     def next_jobs(self, present_behaviour=False):
+        return []
+
         if present_behaviour:
             return DichotomicFileJob.from_other_job(self)
         else:
             return []
 
 
-class SplitFileJob(DichotomicFileJob):
-    def __init__(self, exp_content, cmd, exp_outdir, file_idx=0):
+class PeelFileJob(DichotomicFileJob):
+    def __init__(self, exp_content, cmd, result_dir, file_idx=0):
         super().__init__(exp_content, cmd, out_directory, file_idx=file_idx)
 
     def next_jobs(self):

@@ -31,7 +31,6 @@ class TestFileManager:
 		assert len(right) == 2
 		assert right.nucl_size() == fm.sequence_list.nucl_size() - split_position
 
-
 	def test_split_second_seq(self):
 		fm = FileManager("tests/2triplets.fa")
 		fm.index_sequences()
@@ -44,7 +43,6 @@ class TestFileManager:
 
 		assert len(right) == 1
 		assert right.nucl_size() == fm.sequence_list.nucl_size() - split_position
-
 
 	def test_split_between_seq(self):
 		fm = FileManager("tests/2triplets.fa")

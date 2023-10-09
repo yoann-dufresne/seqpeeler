@@ -4,7 +4,6 @@ from shutil import rmtree
 
 
 class SequenceList:
-    #TODO: Itérable
     def __init__(self):
         self.seq_lists = []
         self.cumulative_size = []
