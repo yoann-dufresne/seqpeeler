@@ -1,18 +1,27 @@
+from enum import Enum
 from os import path, mkdir, SEEK_SET
 from sys import stderr
 from shutil import rmtree
+from copy import copy
 
+
+class SequenceStatus(Enum):
+    Dichotmy = 0
+    LeftPeel = 1
+    RightPeel = 2
 
 class SequenceList:
     def __init__(self):
         self.seq_lists = []
         self.cumulative_size = []
         self.current_iterator = None
+        self.status = None
 
     def copy(self):
         cpy = SequenceList()
         cpy.seq_lists = [x.copy() for x in self.seq_lists]
         cpy.cumulative_size = [x for x in self.cumulative_size]
+        cpy.status = self.status
         return cpy
 
     def __len__(self):
@@ -47,6 +56,7 @@ class SequenceList:
             return 0
 
         return self.cumulative_size[-1]
+
 
     def add_sequence_list(self, seq_lst_obj):
         if seq_lst_obj is None:
@@ -114,11 +124,15 @@ class SequenceList:
 class SequenceHolder(SequenceList):
     """ Remembers the absolute positions of a sequence in a file (in Bytes)
     """
-    def __init__(self, header, left, right, file):
+    def __init__(self, header, left, right, file, masks=None):
         self.header = header
         self.left = left # First byte of the sequence
         self.right = right # Last byte of the sequence
         self.file = file
+        if masks is None:
+            self.masks = [(left, right, SequenceStatus.Dichotmy)]
+        else:
+            self.masks = [(x, y, z) for x, y, z in masks]
 
     def __len__(self):
         return 1
@@ -134,7 +148,7 @@ class SequenceHolder(SequenceList):
         else:
             raise StopIteration
 
-    def nucl_size(self):
+    def nucl_size(self, unmasked=False):
         return self.right - self.left + 1
 
     def left_split(self, size):
@@ -160,7 +174,7 @@ class SequenceHolder(SequenceList):
         return f"{self.header} $$$ left={self.left} right={self.right}"
 
     def copy(self):
-        return SequenceHolder(self.header, self.left, self.right, self.file)
+        return SequenceHolder(self.header, self.left, self.right, self.file, masks=self.masks)
 
     def __eq__(self, other):
         return self.size() == other.size()
