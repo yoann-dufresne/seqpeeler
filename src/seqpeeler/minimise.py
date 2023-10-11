@@ -1,7 +1,8 @@
 from enum import Enum
 from sys import stderr
+import heapq
 
-from seqpeeler.filemanager import ExperimentDirectory, ExperimentContent
+from seqpeeler.filemanager import ExperimentDirectory, ExperimentContent, SequenceStatus
 from seqpeeler.processes import Job, mainscheduler
 
 
@@ -86,8 +87,7 @@ class CompleteJob(Job):
 
         # Only 1 file => Try to reduce its sequences
         if len(self.exp_content.input_sequences) == 1:
-            print("TODO: dichotomic Job")
-            return []
+            return DichotomicJob.from_previous_job(self)
 
         # Multiple files => Try to remove some files
         in_files = list(self.exp_content.input_sequences.values())
@@ -137,7 +137,7 @@ class DeleteFilesJob(Job):
             sequences = self.exp_content.ordered_inputs
             # Nothing to delete after that job
             if len(sequences) == 1 or len(self.exp_content.ordered_inputs) == self.deletion_idx:
-                return [DichotomicFileJob(self.exp_content, self.initial_cmd, self.result_dir)]
+                return DichotomicJob.from_previous_job(self)
 
             if present_behaviour:
                 new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir,
@@ -149,19 +149,51 @@ class DeleteFilesJob(Job):
 
 
 
-class DichotomicFileJob(Job):
+class DichotomicJob(Job):
     
+    def from_previous_job(job):
+        # Generate the priorities if needed
+        slice_priorities = []
+        if type(job) != DichotomicJob:
+            # Init slices
+            for in_file in job.exp_content.input_sequences.values():
+                for mask in in_file.sequence_list.get_masks():
+                    slice_priorities.append(((mask[0] - mask[1]), in_file, mask))
+            heapq.heapify(slice_priorities)
+        else:
+            slice_priorities = job.slice_priorities
+
+        # Select the slice with the highest priority
+        _, file, selected_slice = heapq.heappop(slice_priorities)
+        _, _, status, seq_list = selected_slice
+
+        if status == SequenceStatus.Dichotomy:
+            left, right = seq_list.split(seq_list.nucl_size()//2)
+            print("left", left, left.masks)
+            # print("right", right, right.masks)
+
+            # Left content prepare
+            left_content = job.exp_content.copy()
+            left_content.rm_input(file)
+            # modify the selected file content TODO TODO
+            seq_list = file.sequence_list
+            # include the new content into the experiment
+            left_content.set_input(file)
+            print(left_content)
+
+            # left_job = DichotomicJob()
+
+            # right job
+
+        return []
+
     def __init__(self, exp_content, cmd, exp_outdir):
         super().__init__(exp_content, cmd, exp_outdir)
-        
-        self.slices = []
-        for in_file in exp_content.input_sequences.values():
-            print(in_file)
-            for seq in in_file.sequence_list:
-                for mask in seq.masks:
-                    self.slices.append(((mask[0] - mask[1]), seq, mask))
-            print(self.slices)
-        exit(0)
+        self.slice_priorities = []
+
+    def reduce(self):
+        largest_slice = heapq.heappop(self.slices)
+
 
     def next_jobs(self, present_behaviour=False):
         return []
@@ -173,88 +205,3 @@ class DichotomicFileJob(Job):
 
 
 
-
-# def reduce_uniq_file(experiment, args) :
-#     """ Iteratively reduce the sequences size from a uniq file until reaching the minimal example.
-            
-#             Parameters:
-#                 experiment (ExperimentContent): An object containing all the file indirection for the experiment.
-#                 args (NameTuple): parsed command line arguments
-#     """
-    
-#     while tmpsubseqs : # while set not empty
-        
-#         seq = tmpsubseqs.pop() # take an arbitrary sequence of the specie
-#         sp.subseqs.remove(seq)
-#         (begin, end) = seq
-
-#         middle = (seq[0] + seq[1]) // 2     
-#         seq1 = (begin, middle)
-#         seq2 = (middle, end)
-
-#         # prepare the files and directories needed to check if they pass the test
-#         sp.subseqs.append(seq1)
-#         dirname1 = prepare_dir(spbyfile, cmdargs)
-#         sp.subseqs.remove(seq1)     
-
-#         sp.subseqs.append(seq2)
-#         dirname2 = prepare_dir(spbyfile, cmdargs)
-
-#         sp.subseqs.append(seq1)
-#         dirname3 = prepare_dir(spbyfile, cmdargs)
-#         sp.subseqs.remove(seq1)
-#         sp.subseqs.remove(seq2)
-
-#         dirnames = list()
-#         priorities = list()
-#         if middle != end :
-#             dirnames.append(dirname1)
-#             priorities.append(True)
-#         if middle != begin :
-#             dirnames.append(dirname2)
-#             priorities.append(True)
-#         if middle != end and middle != begin :
-#             dirnames.append(dirname3)
-#             priorities.append(False)
-        
-#         #print("nombre de proc simultannés : ", len(dirnames))
-        
-#         firstdirname = trigger_and_wait_processes(cmdargs, dirnames, priorities)
-#         rmtree(dirname1)
-#         rmtree(dirname2)
-#         rmtree(dirname3)
-
-#         # TODO : utiliser des elif au lieu des continue ?
-#         # case where the target fragment is in the first half
-#         if firstdirname is not None and firstdirname == dirname1 :
-#             #print("case 1")
-#             sp.subseqs.append(seq1)
-#             tmpsubseqs.append(seq1)
-#             continue
-        
-#         # case where the target fragment is in the second half
-#         if firstdirname is not None and firstdirname == dirname2 :
-#             #print("case 2")
-#             sp.subseqs.append(seq2)
-#             tmpsubseqs.append(seq2)
-#             continue
-        
-#         # case where there are two co-factor sequences
-#         # so we cut the seq in half and add them to the set to be reduced
-#         # TODO : relancer le check_output pour trouver les co-factors qui ne sont pas de part et d'autre du milieu de la séquence
-#         if firstdirname is not None and firstdirname == dirname3 :
-#             #print("case 3")
-#             sp.subseqs.append(seq1)
-#             sp.subseqs.append(seq2)
-#             tmpsubseqs.append(seq1)
-#             tmpsubseqs.append(seq2)
-#             continue
-        
-#         # case where the target sequence is on both sides of the cut
-#         # so we strip first and last unnecessary nucleotids
-#         #print("case 4")
-#         seq = strip_sequence(seq, sp, spbyfile, True, cmdargs)
-#         seq = strip_sequence(seq, sp, spbyfile, False, cmdargs)
-#         sp.subseqs.append(seq)
-    
-#     return None

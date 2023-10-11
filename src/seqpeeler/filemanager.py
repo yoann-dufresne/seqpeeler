@@ -6,22 +6,27 @@ from copy import copy
 
 
 class SequenceStatus(Enum):
-    Dichotmy = 0
+    Dichotomy = 0
     LeftPeel = 1
     RightPeel = 2
+    Unknown = 3
 
 class SequenceList:
-    def __init__(self):
+    def __init__(self, parent=None, masks=None):
+        self.parent = parent
         self.seq_lists = []
         self.cumulative_size = []
         self.current_iterator = None
-        self.status = None
+        if masks is None:
+            self.masks = []
+        else:
+            self.masks = [(x, y, z, t) for x, y, z, t in masks]
 
     def copy(self):
         cpy = SequenceList()
         cpy.seq_lists = [x.copy() for x in self.seq_lists]
         cpy.cumulative_size = [x for x in self.cumulative_size]
-        cpy.status = self.status
+        cpy.masks = [(x, y, z, cpy) for x, y, z, _ in self.masks]
         return cpy
 
     def __len__(self):
@@ -57,17 +62,50 @@ class SequenceList:
 
         return self.cumulative_size[-1]
 
+    def get_masks(self):
+        for mask in self.masks:
+            if mask[2] != SequenceStatus.Unknown:
+                yield mask
+            else:
+                for submask in mask[3].get_masks():
+                    yield submask
 
     def add_sequence_list(self, seq_lst_obj):
         if seq_lst_obj is None:
             return
+
+        # size update
         self.cumulative_size.append(self.nucl_size() + seq_lst_obj.nucl_size())
+        # Add the sequence list
         self.seq_lists.append(seq_lst_obj)
+
+        # update masks
+        if len(self.masks) == 0:
+            self.masks.append((0, self.nucl_size()-1, SequenceStatus.Dichotomy, self))
+        elif self.masks[-1][2] != SequenceStatus.Dichotomy:
+            self.masks.append((self.cumulative_size[-2], self.nucl_size()-1, SequenceStatus.Dichotomy, self))
+        else:
+            last_mask = self.masks.pop()
+            self.masks.append((last_mask[0], self.nucl_size()-1, SequenceStatus.Dichotomy, self))
+        
 
     def add_sequence_holder(self, seq_holder):
         self.add_sequence_list(seq_holder)
 
-    def split(self, position):
+    def split(self, mask):
+        """
+        WARNING: the mask to split has to be of length 2 at minimum
+        """
+        if mask not in self.masks:
+            raise IndexError("Absent mask")
+
+        middle = (mask[0] + mask[1] + 1) // 2
+        if mask[2] == SequenceStatus.Dichotomy:
+            return self.split_position(middle)
+        else:
+            raise NotImplementedError()
+
+    def split_position(self, position):
         split_lst_found = False
         left, right = 0, len(self.seq_lists) - 1
         middle = (left + right) // 2
@@ -94,12 +132,12 @@ class SequenceList:
 
         # split the middle list and creates 2 sublists
         middle_presize = self.cumulative_size[middle-1] if middle != 0 else 0
-        left_split, right_split = lst_to_split.split(position - middle_presize)
+        left_split, right_split = lst_to_split.split_position(position - middle_presize)
 
         left_list = SequenceList()
         # before the middle list
-        left_list.seq_lists.extend(self.seq_lists[:middle])
-        left_list.cumulative_size.extend(self.cumulative_size[:middle])
+        for lst in self.seq_lists[:middle]:
+            left_list.add_sequence_list(lst)
         # left part of the middle list
         left_list.add_sequence_list(left_split)
 
@@ -107,9 +145,8 @@ class SequenceList:
         # right par of the middle list
         right_list.add_sequence_list(right_split)
         # after the middle list
-        right_list.seq_lists.extend(self.seq_lists[middle+1:])
-        size_modifier = self.cumulative_size[middle] - right_split.nucl_size()
-        right_list.cumulative_size.extend(x - size_modifier for x in self.cumulative_size[middle+1:])
+        for lst in self.seq_lists[middle+1:]:
+            right_list.add_sequence_list(lst)
 
         # Depth reduction step
         while type(left_list) == SequenceList and len(left_list) == 1:
@@ -124,15 +161,16 @@ class SequenceList:
 class SequenceHolder(SequenceList):
     """ Remembers the absolute positions of a sequence in a file (in Bytes)
     """
-    def __init__(self, header, left, right, file, masks=None):
+    def __init__(self, header, left, right, file, parent=None, masks=None):
         self.header = header
         self.left = left # First byte of the sequence
         self.right = right # Last byte of the sequence
         self.file = file
+        self.parent = parent
         if masks is None:
-            self.masks = [(left, right, SequenceStatus.Dichotmy)]
+            self.masks = [(0, right-left, SequenceStatus.Dichotomy, self)]
         else:
-            self.masks = [(x, y, z) for x, y, z in masks]
+            self.masks = [(x, y, z, self) for x, y, z, _ in masks]
 
     def __len__(self):
         return 1
@@ -151,30 +189,16 @@ class SequenceHolder(SequenceList):
     def nucl_size(self, unmasked=False):
         return self.right - self.left + 1
 
-    def left_split(self, size):
-        left = SequenceHolder(self.header, self.left, self.left+size-1, self.file)
-        if left.nucl_size() <= 0 or left.right > self.right:
-            return None
-        else:
-            return left
-
-    def right_split(self, size):
-        right = SequenceHolder(self.header, self.right-size+1, self.right, self.file)
-        if right.left < 0 or right.left > self.right:
-            return None
-        else:
-            return right
-
-    def split(self, position):
-        left = self.left_split(position) if position > 0 else None
-        right = self.right_split(self.nucl_size() - position) if position < self.right+1 else None
+    def split_position(self, position):
+        left = SequenceHolder(self.header, self.left, position-1, self.file, parent=self.parent)
+        right = SequenceHolder(self.header, position, self.right, self.file, parent=self.parent)
         return left, right
 
     def create_header(self):
         return f"{self.header} $$$ left={self.left} right={self.right}"
 
     def copy(self):
-        return SequenceHolder(self.header, self.left, self.right, self.file, masks=self.masks)
+        return SequenceHolder(self.header, self.left, self.right, self.file, self.parent, masks=self.masks)
 
     def __eq__(self, other):
         return self.size() == other.size()
@@ -312,6 +336,9 @@ class ExperimentContent:
         self.output_files = {}
         self.inputs_size = 0
 
+    def __repr__(self):
+        return f"<inputs: {len(self.input_sequences)} ({self.inputs_size}) ; outputs: {len(self.output_files)}>"
+
     def replace_input(self, file_manager, input_idx=0):
         if input_idx >= len(self.input_sequences):
             raise IndexError(f"Too few files for index {input_idx}")
@@ -329,6 +356,11 @@ class ExperimentContent:
         self.input_sequences[file_manager.original_name] = file_manager
         self.inputs_size += file_manager.nucl_size()
 
+    def rm_input(self, file_manager):
+        del self.input_sequences[file_manager.original_name]
+        self.ordered_inputs.remove(file_manager.original_name)
+        self.inputs_size -= file_manager.nucl_size()
+
     def set_inputs(self, file_managers):
         for fm in file_managers:
             self.set_input(fm)
@@ -345,6 +377,8 @@ class ExperimentContent:
 
         copy.input_sequences = {name: self.input_sequences[name].copy() for name in self.input_sequences}
         copy.output_files = {x: y for x, y in self.output_files.items()}
+        copy.inputs_size = self.inputs_size
+        copy.ordered_inputs = [x for x in self.ordered_inputs]
 
         return copy
 
