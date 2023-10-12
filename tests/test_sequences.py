@@ -62,6 +62,21 @@ class TestSequencesDicho:
 		assert len(right.masks) == 1
 		assert right.masks[0] == (0, 11, SequenceStatus.Dichotomy)
 
+	def test_extends(self):
+		self.init()
+		lst1 = SequenceList()
+		lst1.add_sequence_holder(self.seq1)
+		lst1.init_masks()
+		lst2 = SequenceList()
+		lst2.add_sequence_holder(self.seq2)
+		lst2.init_masks()
+
+		lst1.extends(lst2)
+		assert len(lst1) == 2
+		assert len(lst1.masks) == 2
+		assert lst1.masks[0] == (0, 9, SequenceStatus.Dichotomy)
+		assert lst1.masks[1] == (10, 22, SequenceStatus.Dichotomy)
+
 # class TestSequencesPeel:
 # 	def init(self):
 # 		self.left_mask = (0, 6, SequenceStatus.LeftPeel, None)

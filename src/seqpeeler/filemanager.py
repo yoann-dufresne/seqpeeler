@@ -14,7 +14,6 @@ class SequenceList:
     def __init__(self):
         self.seq_holders = []
         self.cumulative_size = []
-        self.current_iterator = None
         self.masks = []
 
     def copy(self):
@@ -31,7 +30,6 @@ class SequenceList:
         return ", ".join(str(x) for x in self.seq_holders)
 
     def __iter__(self):
-        self.iter_idx = 0
         return self
 
     def __next__(self):
@@ -111,6 +109,14 @@ class SequenceList:
             right_list.init_masks()
 
         return left_list, right_list
+
+    def extends(self, seq_list):
+        size_pre_merge = self.nucl_size()
+
+        for seq_holder in seq_list.seq_holders:
+            self.add_sequence_holder(seq_holder)
+        for start, stop, status in seq_list.masks:
+            self.masks.append((start+size_pre_merge, stop+size_pre_merge, status))
 
 
 class SequenceHolder:
