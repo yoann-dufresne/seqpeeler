@@ -30,12 +30,16 @@ class SequenceList:
         return ", ".join(str(x) for x in self.seq_holders)
 
     def __iter__(self):
+        self.iter_idx = 0
         return self
 
     def __next__(self):
-        for x in self.seq_holders:
-            yield x
-        raise StopIteration
+        if len(self.seq_holders) <= self.iter_idx:
+            raise StopIteration
+
+        next_val = self.seq_holders[self.iter_idx]
+        self.iter_idx += 1
+        return next_val
 
     def nucl_size(self):
         if len(self.seq_holders) == 0:
@@ -50,6 +54,22 @@ class SequenceList:
     def init_masks(self):
         self.masks = [(0, self.nucl_size()-1, SequenceStatus.Dichotomy)]
 
+    def dicho_to_peel(self, mask):
+        """
+        Transform the mask in parameter into 2 peeler masks of the same size. The mask must be present in the masks list.
+
+        Parameters:
+            mask (tuple): The dichotomic mask to transform
+        """
+        if mask[2] != SequenceStatus.Dichotomy:
+            raise ValueError("Wrong mask type")
+        maks_position = self.masks.index(mask)
+
+        self.masks.pop(maks_position)
+        middle = (mask[1] + mask[0] + 1) // 2
+        self.masks.insert(maks_position, (mask[0], middle-1, SequenceStatus.LeftPeel))
+        self.masks.insert(maks_position, (middle, mask[1], SequenceStatus.RightPeel))
+
     def add_sequence_holder(self, sequence_holder):
         if sequence_holder is None:
             return
@@ -60,14 +80,18 @@ class SequenceList:
         self.seq_holders.append(sequence_holder)
 
     def split(self, mask):
-        """
-        WARNING: the split mask must cover 2 positions at least
-        """
         if mask not in self.masks:
             raise IndexError("No remaining splitting mask")
 
-        split_position = (mask[0] + mask[1] + 1) // 2
+        match mask[2]:
+            case SequenceStatus.Dichotomy:
+                return self.split_dichotomic_mask(mask)
+            case SequenceStatus.RightPeel:
+                return self.split_rightpeel_mask(mask)
 
+        raise NotImplementedError()
+
+    def get_holder_to_split(self, position):
         split_lst_found = False
         holder_to_split = None
 
@@ -78,21 +102,68 @@ class SequenceList:
             lst_left_size = 0 if middle == 0 else self.cumulative_size[middle-1]
             lst_right_size = self.cumulative_size[middle]
 
-            if lst_left_size <= split_position < lst_right_size:
+            if lst_left_size <= position < lst_right_size:
                 split_lst_found = True
                 holder_to_split = self.seq_holders[middle]
-            elif lst_left_size > split_position:
+            elif lst_left_size > position:
                 right = middle - 1
             else:
                 left = middle + 1
 
+        return middle
+
+    def split_rightpeel_mask(self, mask):
+        # Get the holder to split
+        split_position = (mask[0] + mask[1] + 1) // 2
+        holder_idx = self.get_holder_to_split(split_position)
+        holder_to_split = self.seq_holders[holder_idx]
+
+        # split the holder to keep the left part
+        relative_split_position = split_position - self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
+        left_holder, _ = holder_to_split.split_position(relative_split_position)
+
+        # Sequence creations
+        on_succes = SequenceList()
+        on_error = self.copy()
+
+        for seq_holder in self.seq_holders[:holder_idx]:
+            on_succes.add_sequence_holder(seq_holder)
+        if left_holder.nucl_size() == 0:
+            on_succes.add_sequence_holder(left_holder)
+
+        # Masks update
+        position_modifier = mask[1] - split_position
+        before_peel_mask = True
+        for prev_mask in self.masks:
+            if before_peel_mask:
+                if mask == prev_mask:
+                    before_peel_mask = False
+                    on_succes.masks.append((prev_mask[0], split_position-1, prev_mask[2]))
+                    on_error.masks.append((split_position, prev_mask[1], prev_mask[2]))
+                else:
+                    on_succes.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
+                    on_error.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
+            else:
+                on_succes.masks.append((prev_mask[0]-position_modifier, prev_mask[1]-position_modifier, prev_mask[2]))
+                on_error.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
+
+        return on_succes, on_error
+
+    def split_dichotomic_mask(self, mask):
+        """
+        WARNING: the split mask must cover 2 positions at least
+        """
+        split_position = (mask[0] + mask[1] + 1) // 2
+        holder_idx = self.get_holder_to_split(split_position)
+        holder_to_split = self.seq_holders[holder_idx]
+
         # split the middle list and creates 2 sublists
-        middle_presize = self.cumulative_size[middle-1] if middle != 0 else 0
+        middle_presize = self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
         left_split, right_split = holder_to_split.split_position(split_position - middle_presize)
 
         left_list = SequenceList()
         # before the middle list
-        for lst in self.seq_holders[:middle]:
+        for lst in self.seq_holders[:holder_idx]:
             left_list.add_sequence_holder(lst)
         # left part of the middle list
         left_list.add_sequence_holder(left_split)
@@ -103,7 +174,7 @@ class SequenceList:
         # right par of the middle list
         right_list.add_sequence_holder(right_split)
         # after the middle list
-        for lst in self.seq_holders[middle+1:]:
+        for lst in self.seq_holders[holder_idx+1:]:
             right_list.add_sequence_holder(lst)
         if right_list.nucl_size() > 1:
             right_list.init_masks()

@@ -163,6 +163,8 @@ class DichotomicJob(Job):
         else:
             slice_priorities = job.slice_priorities
 
+        print(len(slice_priorities))
+
         # Select the slice with the highest priority
         _, file, selected_slice = heapq.heappop(slice_priorities)
         _, _, status, seq_list = selected_slice

@@ -77,19 +77,30 @@ class TestSequencesDicho:
 		assert lst1.masks[0] == (0, 9, SequenceStatus.Dichotomy)
 		assert lst1.masks[1] == (10, 22, SequenceStatus.Dichotomy)
 
-# class TestSequencesPeel:
-# 	def init(self):
-# 		self.left_mask = (0, 6, SequenceStatus.LeftPeel, None)
-# 		self.right_mask = (0, 6, SequenceStatus.RightPeel, None)
-# 		self.seq1 = SequenceHolder("complete 1", 0, 9, "fake.fa", masks=[self.left_mask])
-# 		self.seq2 = SequenceHolder("complete 2", 0, 12, "fake.fa", masks=[self.right_mask])
-# 		self.seq_list = SequenceList()
-# 		self.seq_list.add_sequence_list(self.seq1)
-# 		self.seq_list.add_sequence_list(self.seq2)
+class TestSequencesPeel:
+	def init(self):
+		self.seq1 = SequenceHolder("complete 1", 0, 9, "fake.fa")
+		self.seq2 = SequenceHolder("complete 2", 0, 12, "fake.fa")
+		self.seq_list = SequenceList()
+		self.seq_list.add_sequence_holder(self.seq1)
+		self.seq_list.add_sequence_holder(self.seq2)
+		self.seq_list.init_masks()
+		self.seq_list.dicho_to_peel(self.seq_list.masks[0])
 
-# 	def test_masks(self):
-# 		self.init()
-# 		print(self.seq1.masks)
-# 		print(self.seq2.masks)
-# 		print(self.seq_list.masks)
-# 		assert len(self.seq_list.masks) == 2
+	def test_masks(self):
+		self.init()
+
+		assert len(self.seq_list.masks) == 2
+		assert self.seq_list.masks[0] == (11, 22, SequenceStatus.RightPeel)
+		assert self.seq_list.masks[1] == (0, 10, SequenceStatus.LeftPeel)
+
+	def test_split(self):
+		self.init()
+
+		mask = self.seq_list.masks[0]
+		print(mask)
+		self.seq_list.masks = [mask]
+		on_succes, on_failure = self.seq_list.split(mask)
+		
+		assert len(on_succes) == 1
+		assert len(on_failure) == 1
