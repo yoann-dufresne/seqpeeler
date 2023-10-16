@@ -118,17 +118,20 @@ class SequenceList:
         holder_idx = self.get_holder_to_split(split_position)
         holder_to_split = self.seq_holders[holder_idx]
 
+
         # split the holder to keep the left part
-        relative_split_position = split_position - self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
-        left_holder, _ = holder_to_split.split_position(relative_split_position)
+        relative_split_size = split_position - self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
+
+        left_holder, _ = holder_to_split.split(relative_split_size)
 
         # Sequence creations
         on_succes = SequenceList()
         on_error = self.copy()
+        on_error.masks = []
 
         for seq_holder in self.seq_holders[:holder_idx]:
             on_succes.add_sequence_holder(seq_holder)
-        if left_holder.nucl_size() == 0:
+        if left_holder.nucl_size() != 0:
             on_succes.add_sequence_holder(left_holder)
 
         # Masks update
@@ -159,7 +162,7 @@ class SequenceList:
 
         # split the middle list and creates 2 sublists
         middle_presize = self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
-        left_split, right_split = holder_to_split.split_position(split_position - middle_presize)
+        left_split, right_split = holder_to_split.split(split_position - middle_presize)
 
         left_list = SequenceList()
         # before the middle list
@@ -205,9 +208,9 @@ class SequenceHolder:
     def nucl_size(self, unmasked=False):
         return self.right - self.left + 1
 
-    def split_position(self, position):
-        left = SequenceHolder(self.header, self.left, position-1, self.file)
-        right = SequenceHolder(self.header, position, self.right, self.file)
+    def split(self, size):
+        left = SequenceHolder(self.header, self.left, size-1, self.file)
+        right = SequenceHolder(self.header, size, self.right, self.file)
         return left, right
 
     def create_header(self):

@@ -1,9 +1,7 @@
 import pytest
 
-
-
-
 from seqpeeler.filemanager import SequenceList, SequenceHolder, SequenceStatus
+
 
 class TestSequencesDicho:
 	def init(self):
@@ -29,7 +27,7 @@ class TestSequencesDicho:
 		self.init()
 
 		for split_position in range(len(self.seq1)+1):
-			left, right = self.seq1.split_position(split_position)
+			left, right = self.seq1.split(split_position)
 			
 			assert left.nucl_size() == split_position
 			assert left.left == 0
@@ -102,5 +100,8 @@ class TestSequencesPeel:
 		self.seq_list.masks = [mask]
 		on_succes, on_failure = self.seq_list.split(mask)
 		
-		assert len(on_succes) == 1
-		assert len(on_failure) == 1
+		assert len(on_succes) == 2
+		assert len(on_succes.masks) == 1
+
+		assert len(on_failure) == 2
+		assert len(on_failure.masks) == 1
