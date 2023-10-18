@@ -92,16 +92,36 @@ class TestSequencesPeel:
 		assert self.seq_list.masks[0] == (11, 22, SequenceStatus.RightPeel)
 		assert self.seq_list.masks[1] == (0, 10, SequenceStatus.LeftPeel)
 
-	def test_split(self):
+	def test_rightpeel(self):
 		self.init()
 
 		mask = self.seq_list.masks[0]
-		print(mask)
 		self.seq_list.masks = [mask]
 		on_succes, on_failure = self.seq_list.split(mask)
 		
 		assert len(on_succes) == 2
 		assert len(on_succes.masks) == 1
+		assert on_succes.nucl_size() == 17
+		assert on_succes.masks[0] == (11, 16, SequenceStatus.RightPeel)
 
 		assert len(on_failure) == 2
 		assert len(on_failure.masks) == 1
+		assert on_failure.nucl_size() == 23
+		assert on_failure.masks[0] == (17, 22, SequenceStatus.RightPeel)
+
+	def test_lefttpeel(self):
+		self.init()
+
+		mask = self.seq_list.masks[1]
+		self.seq_list.masks = [mask]
+		on_succes, on_failure = self.seq_list.split(mask)
+		
+		assert len(on_succes) == 2
+		assert len(on_succes.masks) == 1
+		assert on_succes.nucl_size() == 18
+		assert on_succes.masks[0] == (0, 5, SequenceStatus.LeftPeel)
+
+		assert len(on_failure) == 2
+		assert len(on_failure.masks) == 1
+		assert on_failure.nucl_size() == 23
+		assert on_failure.masks[0] == (0, 4, SequenceStatus.LeftPeel)
