@@ -156,7 +156,7 @@ class SequenceList:
 
     def split_leftpeel_mask(self, mask):
         # Get the holder to split
-        split_position = (mask[0] + mask[1] + 1) // 2
+        split_position = (mask[0] + mask[1] + 1 + 1) // 2
         holder_idx = self.get_holder_to_split(split_position)
         holder_to_split = self.seq_holders[holder_idx]
 

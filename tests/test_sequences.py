@@ -118,10 +118,10 @@ class TestSequencesPeel:
 		
 		assert len(on_succes) == 2
 		assert len(on_succes.masks) == 1
-		assert on_succes.nucl_size() == 18
-		assert on_succes.masks[0] == (0, 5, SequenceStatus.LeftPeel)
+		assert on_succes.nucl_size() == 17
+		assert on_succes.masks[0] == (0, 4, SequenceStatus.LeftPeel)
 
 		assert len(on_failure) == 2
 		assert len(on_failure.masks) == 1
 		assert on_failure.nucl_size() == 23
-		assert on_failure.masks[0] == (0, 4, SequenceStatus.LeftPeel)
+		assert on_failure.masks[0] == (0, 5, SequenceStatus.LeftPeel)
