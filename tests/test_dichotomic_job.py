@@ -1,14 +1,14 @@
-from filemanager import FileManager, ExperimentalContent
-from minimize import DichotomicJob
+from seqpeeler.filemanager import FileManager, ExperimentContent
+from seqpeeler.minimise import DichotomicJob
 
 
 class TestDicho:
 
-	def init(self):
+    def init(self):
         self.input_filename = "tests/triplets.fa"
-        self.input_manager = FileManager(set_input.input_filename)
-        self.exp_content = ExperimentalContent()
-        self.exp_content.set_input(sequence_holder.input_manager)
+        self.input_manager = FileManager(self.input_filename)
+        self.exp_content = ExperimentContent()
+        self.exp_content.set_input(self.input_manager)
         self.cmd = f"python3 tests/triplets_multifasta.py {self.input_filename}"
         self.exp_outdir = "tests_tmp_outdir"
 
