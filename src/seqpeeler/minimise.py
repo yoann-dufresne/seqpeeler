@@ -150,60 +150,12 @@ class DeleteFilesJob(Job):
 
 
 class DichotomicJob(Job):
-    
-    def from_previous_job(job):
-        # Generate the priorities if needed
-        slice_priorities = []
-        if type(job) != DichotomicJob:
-            # Init slices
-            for in_file in job.exp_content.input_sequences.values():
-                for mask in in_file.sequence_list.get_masks():
-                    slice_priorities.append(((mask[0] - mask[1]), in_file, mask))
-            heapq.heapify(slice_priorities)
-        else:
-            slice_priorities = job.slice_priorities
-
-        print(len(slice_priorities))
-
-        # Select the slice with the highest priority
-        _, file, selected_slice = heapq.heappop(slice_priorities)
-        _, _, status, seq_list = selected_slice
-
-        if status == SequenceStatus.Dichotomy:
-            left, right = seq_list.split(seq_list.nucl_size()//2)
-            print("left", left, left.masks)
-            # print("right", right, right.masks)
-
-            # Left content prepare
-            left_content = job.exp_content.copy()
-            left_content.rm_input(file)
-            # modify the selected file content TODO TODO
-            seq_list = file.sequence_list
-            # include the new content into the experiment
-            left_content.set_input(file)
-            print(left_content)
-
-            # left_job = DichotomicJob()
-
-            # right job
-
-        return []
 
     def __init__(self, exp_content, cmd, exp_outdir):
         super().__init__(exp_content, cmd, exp_outdir)
-        self.slice_priorities = []
-
-    def reduce(self):
-        largest_slice = heapq.heappop(self.slices)
-
+        # 1 - Get the larget mask to use for reduction
+        self.mask_to_slice = None
 
     def next_jobs(self, present_behaviour=False):
         return []
-
-        if present_behaviour:
-            return DichotomicFileJob.from_other_job(self)
-        else:
-            return []
-
-
 

@@ -125,3 +125,20 @@ class TestSequencesPeel:
 		assert len(on_failure.masks) == 1
 		assert on_failure.nucl_size() == 23
 		assert on_failure.masks[0] == (0, 5, SequenceStatus.LeftPeel)
+
+
+class TestSequencesSplit:
+	def init(self):
+		self.seq1 = SequenceHolder("complete 1", 0, 9, "fake.fa")
+		self.seq2 = SequenceHolder("complete 2", 0, 12, "fake.fa")
+		self.seq_list = SequenceList()
+		self.seq_list.add_sequence_holder(self.seq1)
+		self.seq_list.add_sequence_holder(self.seq2)
+
+	def test_split_center(self):
+		self.init()
+		left_slice, right_slice = self.seq_list.split_center(5)
+
+		assert len(left_slice) == 1
+
+		assert len(right_slice) == 2

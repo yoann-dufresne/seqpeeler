@@ -15,6 +15,7 @@ class SequenceList:
         self.seq_holders = []
         self.cumulative_size = []
         self.masks = []
+        self.freezed = False
 
     def copy(self):
         cpy = SequenceList()
@@ -300,37 +301,40 @@ class FileManager:
         # Transform file path to absolute
         self.original_name = filename
         self.filename = path.abspath(filename)
-        self.sequence_list = SequenceList()
+        self.sequence_lists = []
         self.verbose = False
 
     def __len__(self):
-        return len(self.sequence_list)
+        return sum(len(x) for x in self.sequence_lists)
 
     def nucl_size(self):
-        return self.sequence_list.nucl_size()
+        return sum(x.nucl_size() for x in self.sequence_lists)
 
     def __lt__(self, other):
-        return len(self.sequence_list) < len(other.sequence_list)
+        return self.nucl_size() < other.nucl_size()
 
     def __repr__(self):
         if self.verbose:
             s = f"FileManager({self.filename}):\n"
-            s += '\n'.join([f"\t{seq_hold.create_header()}: {str(seq_hold)}" for seq_hold in self.sequence_list])
+            for seq_lst in self.sequence_lists:
+                s += '['
+                s += '\n'.join([f"\t{seq_hold.create_header()}: {str(seq_hold)}" for seq_hold in seq_list])
+                s += ']'
             return s
         else:
-            return f"FileManager({self.filename}): {len(self.sequence_list)} indexed sequences"
+            return f"FileManager({self.filename}): {len(self)} indexed sequences"
 
 
     def _register_holder(self, header, seqstart, filepos):
         if header is not None:
             seq_holder = SequenceHolder(header, seqstart, filepos-1, self)
-            self.sequence_list.add_sequence_holder(seq_holder)
+            self.sequence_lists[-1].add_sequence_holder(seq_holder)
 
 
     def index_sequences(self):
         """ Read the positions of the sequences in the file.
         """
-        self.sequence_list = SequenceList()
+        self.sequence_lists = [SequenceList()]
 
         with open(self.filename) as f:
             header = None
@@ -356,7 +360,7 @@ class FileManager:
     def copy(self):
         copy = FileManager(self.filename)
         
-        copy.sequence_list = self.sequence_list.copy()
+        copy.sequence_lists = [x.copy() for x in self.sequence_lists]
         copy.verbose = self.verbose
 
 
@@ -370,29 +374,30 @@ class FileManager:
         
         with open(dest_file, "w") as extract, open(self.filename, "rb") as origin:
             # Writes each sub-sequence of the file
-            for seq_holder in self.sequence_list:
-                # Write header
-                print(f"> {seq_holder.create_header()}", file=extract)
+            for seq_lst in self.sequence_lists:
+                for seq_holder in seq_lst:
+                    # Write header
+                    print(f"> {seq_holder.create_header()}", file=extract)
 
-                # Write sequence
-                origin.seek(seq_holder.left, SEEK_SET)
-                to_read = seq_holder.nucl_size()
-                last_char_is_return = False
-                while to_read > 0:
-                    # Read by chunk to avoir large RAM
-                    read_size = min(to_read, 4194304) # 4 MB max
-                    seq_slice = origin.read(read_size)
-                    seq_slice = seq_slice.decode('ascii')
+                    # Write sequence
+                    origin.seek(seq_holder.left, SEEK_SET)
+                    to_read = seq_holder.nucl_size()
+                    last_char_is_return = False
+                    while to_read > 0:
+                        # Read by chunk to avoir large RAM
+                        read_size = min(to_read, 4194304) # 4 MB max
+                        seq_slice = origin.read(read_size)
+                        seq_slice = seq_slice.decode('ascii')
 
-                    # Write the slice
-                    print(seq_slice, file=extract, end='')
-                    last_char_is_return = True if seq_slice[-1] == "\n" else False
+                        # Write the slice
+                        print(seq_slice, file=extract, end='')
+                        last_char_is_return = True if seq_slice[-1] == "\n" else False
 
-                    # Update the remaining size to read
-                    to_read -= read_size
+                        # Update the remaining size to read
+                        to_read -= read_size
 
-                if not last_char_is_return:
-                    print("", file=extract)
+                    if not last_char_is_return:
+                        print("", file=extract)
 
 
 
