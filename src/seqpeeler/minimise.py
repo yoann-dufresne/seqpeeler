@@ -77,17 +77,18 @@ class CompleteJob(Job):
     Job that will run the command on the entire file set to make sure that the behaviour is present
     """
 
-    def __init__(self, exp_content, cmd, out_directory):
-        super().__init__(exp_content, cmd, out_directory)
+    def __init__(self, exp_content, cmd, result_dir):
+        super().__init__(exp_content, cmd, result_dir)
 
     def next_jobs(self, present_behaviour=False):
         # Expected behaviour is not present
         if not present_behaviour:
-            return []
+            return
 
         # Only 1 file => Try to reduce its sequences
         if len(self.exp_content.input_sequences) == 1:
-            return DichotomicJob.from_previous_job(self)
+            # yield DichotomicJob.from_previous_job(self)
+            return
 
         # Multiple files => Try to remove some files
         in_files = list(self.exp_content.input_sequences.values())
@@ -98,11 +99,13 @@ class CompleteJob(Job):
         content.set_outputs(self.exp_content.output_files.keys())
         content.set_inputs(in_files)
 
-        new_job = DeleteFilesJob(content, self.initial_cmd, self.result_dir, deletion_idx=0)
-        new_job.set_subsumed_job(self)
-        self.children_jobs.append(new_job)
+        for i in range(len(self.exp_content.input_sequences)):
+            new_job = DeleteFilesJob(content, self.initial_cmd, self.result_dir, deletion_idx=i)
+            new_job.set_subsumed_job(self)
+            self.children_jobs.append(new_job)
+            yield new_job
 
-        return [new_job]
+        return
 
 
 class DeleteFilesJob(Job):
@@ -125,37 +128,133 @@ class DeleteFilesJob(Job):
         new_job = None
         # Expected behaviour is not present
         if not present_behaviour:
-            if len(self.parent_content.ordered_inputs) > 1 and self.deletion_idx < len(self.parent_content.ordered_inputs) - 1:
-                new_job = DeleteFilesJob(self.parent_content, self.parent_cmd, self.result_dir,
-                                        deletion_idx=self.deletion_idx+1)
-                new_job.set_subsumed_job(self)
-            else:
-                return []
+            return
 
         # Expected behaviour present
         else:
             sequences = self.exp_content.ordered_inputs
             # Nothing to delete after that job
             if len(sequences) == 1 or len(self.exp_content.ordered_inputs) == self.deletion_idx:
-                return DichotomicJob.from_previous_job(self)
+                # return DichotomicJob.from_previous_job(self)
+                return
 
             if present_behaviour:
-                new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir,
-                                            deletion_idx=self.deletion_idx)
-                new_job.set_subsumed_job(self)
-        
-        self.children_jobs.append(new_job)
-        return [new_job]
-
+                for i in range(self.deletion_idx, len(self.exp_content.input_sequences)):
+                    new_job = DeleteFilesJob(self.exp_content, self.initial_cmd, self.result_dir,
+                                                deletion_idx=i)
+                    new_job.set_subsumed_job(self)
+                    self.children_jobs.append(new_job)
+                    yield new_job
 
 
 class DichotomicJob(Job):
 
-    def __init__(self, exp_content, cmd, exp_outdir):
-        super().__init__(exp_content, cmd, exp_outdir)
-        # 1 - Get the larget mask to use for reduction
-        self.mask_to_slice = None
+    def __init__(self, exp_content, cmd, result_dir, to_reduce):
+        """
+        Creates a dichotomic job.
+
+            Parameters:
+                exp_content (ExperimentContent): File content of the job
+                cmd (string): Command to run (before modification)
+                result_dir (string): Directory to use for outputs
+                to_reduce (tuple): Triplets that store the file to reduce, the list index in which the reduction is done and the mask to use for reduction
+        """
+        # 1 - Parameter registration
+        self.file_to_reduce, self.mask_to_reduce_lst_idx, self.mask_to_reduce = to_reduce
+        # 2 - Modification of the inputs to match the reduction
+        self.parent_content = exp_content
+        exp_content = self.reduce_inputs()
+        # 3 - Creation of the job
+        super().__init__(exp_content, cmd, result_dir)
 
     def next_jobs(self, present_behaviour=False):
-        return []
+        self.update_masks(present_behaviour=present_behaviour)
+        mask, lst_idx, file = self.select_mask()
+        match(mask[2]):
+            case SequenceStatus.LeftDicho:
+                yield LeftDichoJob(self.exp_content, self.cmd, self.result_dir, (file, lst_idx, mask))
+            case SequenceStatus.RightDicho:
+                yield RightDichoJob(self.exp_content, self.cmd, self.result_dir, (file, lst_idx, mask))
+            case SequenceStatus.LeftPeel:
+                yield LeftPeelJob(self.exp_content, self.cmd, self.result_dir, (file, lst_idx, mask))
+            case SequenceStatus.RightPeel:
+                yield RightPeelJob(self.exp_content, self.cmd, self.result_dir, (file, lst_idx, mask))
 
+    def select_mask(self):
+        mask_to_reduce = None
+        mask_to_reduce_lst_idx = None
+        file_to_reduce = None
+        max_size = 0
+        for filename in self.exp_content.input_sequences:
+            fm = self.exp_content.input_sequences[filename]
+            for lst_idx, mask in fm.get_masks():
+                size = mask[1] - mask[0] + 1
+                if size > max_size:
+                    max_size = size
+                    file_to_reduce = fm
+                    mask_to_reduce = mask
+                    mask_to_reduce_lst_idx = lst_idx
+        return mask_to_reduce, mask_to_reduce_lst_idx, file_to_reduce
+
+
+class LeftDichoJob(DichotomicJob):
+
+    def __init__(self, exp_content, cmd, result_dir, to_reduce):
+        super().__init__(exp_content, cmd, result_dir, to_reduce)
+
+    def reduce_inputs(self):
+        print("reduce_inputs")
+        new_content = self.parent_content.copy()
+        new_file = new_content.input_sequences[self.file_to_reduce.original_name]
+        print(new_file.nucl_size())
+        print("mask", self.mask_to_reduce)
+
+        lst = self.file_to_reduce.sequence_lists[self.mask_to_reduce_lst_idx]
+        new_list = lst.split_dicho_mask(self.mask_to_reduce)
+        print(new_list)
+        print(lst.nucl_size(), new_list.nucl_size())
+        new_file.sequence_lists[self.mask_to_reduce_lst_idx] = new_list
+
+        print("/reduce_inputs")
+        return new_content
+
+    def update_masks(self, present_behaviour=False):
+        lst = self.file_to_reduce.sequence_lists[self.mask_to_reduce_lst_idx]
+        mask_idx = lst.masks.index(self.mask_to_reduce)
+        lst.masks[mask_idx] = (self.mask_to_reduce[0], self.mask_to_reduce[1], SequenceStatus.RightDicho)
+
+
+class RightDichoJob(DichotomicJob):
+
+    def __init__(self, exp_content, cmd, result_dir, to_reduce):
+        super().__init__(exp_content, cmd, result_dir, to_reduce)
+
+    def reduce_inputs(self):
+        return ExperimentContent()
+
+    def update_masks(self, present_behaviour=False):
+        pass
+
+
+class LeftPeelJob(DichotomicJob):
+
+    def __init__(self, exp_content, cmd, result_dir, to_reduce):
+        super().__init__(exp_content, cmd, result_dir, to_reduce)
+
+    def reduce_inputs(self):
+        return ExperimentContent()
+
+    def update_masks(self, present_behaviour=False):
+        pass
+
+
+class RightPeelJob(DichotomicJob):
+
+    def __init__(self, exp_content, cmd, result_dir, to_reduce):
+        super().__init__(exp_content, cmd, result_dir, to_reduce)
+
+    def reduce_inputs(self):
+        return ExperimentContent()
+
+    def update_masks(self, present_behaviour=False):
+        pass

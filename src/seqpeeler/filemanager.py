@@ -6,9 +6,10 @@ from copy import copy
 
 
 class SequenceStatus(Enum):
-    Dichotomy = 0
-    LeftPeel = 1
-    RightPeel = 2
+    LeftDicho = 0
+    RightDicho = 1
+    LeftPeel = 2
+    RightPeel = 3
 
 class SequenceList:
     def __init__(self):
@@ -53,7 +54,7 @@ class SequenceList:
             yield mask
 
     def init_masks(self):
-        self.masks = [(0, self.nucl_size()-1, SequenceStatus.Dichotomy)]
+        self.masks = [(0, self.nucl_size()-1, SequenceStatus.LeftDicho)]
 
     def dicho_to_peel(self, mask):
         """
@@ -62,7 +63,7 @@ class SequenceList:
         Parameters:
             mask (tuple): The dichotomic mask to transform
         """
-        if mask[2] != SequenceStatus.Dichotomy:
+        if mask[2] != SequenceStatus.RightDicho:
             raise ValueError("Wrong mask type")
         maks_position = self.masks.index(mask)
 
@@ -70,6 +71,7 @@ class SequenceList:
         middle = (mask[1] + mask[0] + 1) // 2
         self.masks.insert(maks_position, (mask[0], middle-1, SequenceStatus.LeftPeel))
         self.masks.insert(maks_position, (middle, mask[1], SequenceStatus.RightPeel))
+        print(self.masks)
 
     def add_sequence_holder(self, sequence_holder):
         if sequence_holder is None:
@@ -80,13 +82,11 @@ class SequenceList:
         # Add the sequence list
         self.seq_holders.append(sequence_holder)
 
-    def split(self, mask):
+    def split_peel(self, mask):
         if mask not in self.masks:
             raise IndexError("No remaining splitting mask")
 
         match mask[2]:
-            case SequenceStatus.Dichotomy:
-                return self.split_dichotomic_mask(mask)
             case SequenceStatus.RightPeel:
                 return self.split_rightpeel_mask(mask)
             case SequenceStatus.LeftPeel:
@@ -97,6 +97,9 @@ class SequenceList:
     def get_holder_to_split(self, position):
         split_lst_found = False
         holder_to_split = None
+
+        if self.nucl_size() == position:
+            return len(self.seq_holders)-1
 
         left, middle, right = 0, 0, len(self.seq_holders)
         # Search for the list to split (Dichotomic)
@@ -120,7 +123,6 @@ class SequenceList:
         split_position = (mask[0] + mask[1] + 1) // 2
         holder_idx = self.get_holder_to_split(split_position)
         holder_to_split = self.seq_holders[holder_idx]
-
 
         # split the holder to keep the left part
         relative_split_size = split_position - self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
@@ -195,20 +197,23 @@ class SequenceList:
         print("on_succes", on_succes)
         return on_succes, on_error
 
-    def split_dichotomic_mask(self, mask):
+    def split_dicho_mask(self, mask):
         """
         WARNING: the split mask must cover 2 positions at least
         """
         split_position = (mask[0] + mask[1] + 1) // 2
         left_list, right_list = self.divide(split_position)
 
-        if left_list.nucl_size() > 1:
-            left_list.init_masks()
+        if mask[2] == SequenceStatus.LeftDicho:
+            if left_list.nucl_size() > 1:
+                left_list.init_masks()
+            return left_list
+        elif mask[2] == SequenceStatus.RightDicho:
+            if right_list.nucl_size() > 1:
+                right_list.init_masks()
+            return right_list
 
-        if right_list.nucl_size() > 1:
-            right_list.init_masks()
-
-        return left_list, right_list
+        raise NotImplementedError()
 
     def split_center(self, position):
         left_list, right_list = self.divide(position)
@@ -223,31 +228,33 @@ class SequenceList:
 
         # split the middle list and creates 2 sublists
         middle_presize = self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
-        left_split, right_split = holder_to_split.split(split_position - middle_presize)
+        left_split, right_split = holder_to_split.split(split_position - middle_presize + holder_to_split.left)
 
         left_list = SequenceList()
         # before the middle list
         for lst in self.seq_holders[:holder_idx]:
             left_list.add_sequence_holder(lst)
         # left part of the middle list
-        left_list.add_sequence_holder(left_split)
-
+        if left_split.nucl_size() > 0:
+            left_list.add_sequence_holder(left_split)
+    
         right_list = SequenceList()
         # right par of the middle list
-        right_list.add_sequence_holder(right_split)
+        if right_split.nucl_size() > 0:
+            right_list.add_sequence_holder(right_split)
         # after the middle list
         for lst in self.seq_holders[holder_idx+1:]:
             right_list.add_sequence_holder(lst)
 
         return left_list, right_list
 
-    def extends(self, seq_list):
-        size_pre_merge = self.nucl_size()
+    # def extends(self, seq_list):
+    #     size_pre_merge = self.nucl_size()
 
-        for seq_holder in seq_list.seq_holders:
-            self.add_sequence_holder(seq_holder)
-        for start, stop, status in seq_list.masks:
-            self.masks.append((start+size_pre_merge, stop+size_pre_merge, status))
+    #     for seq_holder in seq_list.seq_holders:
+    #         self.add_sequence_holder(seq_holder)
+    #     for start, stop, status in seq_list.masks:
+    #         self.masks.append((start+size_pre_merge, stop+size_pre_merge, status))
 
 
 class SequenceHolder:
@@ -324,12 +331,19 @@ class FileManager:
         else:
             return f"FileManager({self.filename}): {len(self)} indexed sequences"
 
+    def get_masks(self):
+        for lst_idx, lst in enumerate(self.sequence_lists):
+            for mask in lst.get_masks():
+                yield lst_idx, mask
 
     def _register_holder(self, header, seqstart, filepos):
         if header is not None:
             seq_holder = SequenceHolder(header, seqstart, filepos-1, self)
             self.sequence_lists[-1].add_sequence_holder(seq_holder)
 
+    def init_content(self):
+        self.index_sequences()
+        self.sequence_lists[0].init_masks()
 
     def index_sequences(self):
         """ Read the positions of the sequences in the file.
@@ -358,10 +372,11 @@ class FileManager:
 
 
     def copy(self):
-        copy = FileManager(self.filename)
+        copy = FileManager(self.original_name)
         
         copy.sequence_lists = [x.copy() for x in self.sequence_lists]
         copy.verbose = self.verbose
+        return copy
 
 
     def extract(self, dest_file):
