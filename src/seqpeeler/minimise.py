@@ -203,25 +203,24 @@ class LeftDichoJob(DichotomicJob):
         super().__init__(exp_content, cmd, result_dir, to_reduce)
 
     def reduce_inputs(self):
-        print("reduce_inputs")
         new_content = self.parent_content.copy()
         new_file = new_content.input_sequences[self.file_to_reduce.original_name]
-        print(new_file.nucl_size())
-        print("mask", self.mask_to_reduce)
 
         lst = self.file_to_reduce.sequence_lists[self.mask_to_reduce_lst_idx]
         new_list = lst.split_dicho_mask(self.mask_to_reduce)
-        print(new_list)
-        print(lst.nucl_size(), new_list.nucl_size())
         new_file.sequence_lists[self.mask_to_reduce_lst_idx] = new_list
 
-        print("/reduce_inputs")
         return new_content
 
     def update_masks(self, present_behaviour=False):
-        lst = self.file_to_reduce.sequence_lists[self.mask_to_reduce_lst_idx]
-        mask_idx = lst.masks.index(self.mask_to_reduce)
-        lst.masks[mask_idx] = (self.mask_to_reduce[0], self.mask_to_reduce[1], SequenceStatus.RightDicho)
+        file = self.exp_content.input_sequences[self.file_to_reduce.original_name]
+        prev_lst = self.file_to_reduce.sequence_lists[self.mask_to_reduce_lst_idx]
+        lst = file.sequence_lists[self.mask_to_reduce_lst_idx]
+        mask_idx = prev_lst.masks.index(self.mask_to_reduce)
+        if present_behaviour:
+            lst.masks[mask_idx] = (lst.masks[mask_idx][0], lst.masks[mask_idx][1], SequenceStatus.LeftDicho)
+        else:
+            lst.masks[mask_idx] = (self.mask_to_reduce[0], self.mask_to_reduce[1], SequenceStatus.RightDicho)
 
 
 class RightDichoJob(DichotomicJob):
