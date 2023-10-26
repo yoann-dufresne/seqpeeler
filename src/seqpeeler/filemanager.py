@@ -6,10 +6,9 @@ from copy import copy
 
 
 class SequenceStatus(Enum):
-    LeftDicho = 0
-    RightDicho = 1
-    LeftPeel = 2
-    RightPeel = 3
+    Dichotomy = 0
+    LeftPeel = 1
+    RightPeel = 2
 
 class SequenceList:
     def __init__(self):
@@ -54,7 +53,7 @@ class SequenceList:
             yield mask
 
     def init_masks(self):
-        self.masks = [(0, self.nucl_size()-1, SequenceStatus.LeftDicho)]
+        self.masks = [(0, self.nucl_size()-1, SequenceStatus.Dichotomy)]
 
     def dicho_to_peel(self, mask):
         """
@@ -63,7 +62,7 @@ class SequenceList:
         Parameters:
             mask (tuple): The dichotomic mask to transform
         """
-        if mask[2] != SequenceStatus.RightDicho:
+        if mask[2] != SequenceStatus.Dichotomy:
             raise ValueError("Wrong mask type")
         maks_position = self.masks.index(mask)
 
@@ -71,8 +70,7 @@ class SequenceList:
         middle = (mask[1] + mask[0] + 1) // 2
         self.masks.insert(maks_position, (mask[0], middle-1, SequenceStatus.LeftPeel))
         self.masks.insert(maks_position, (middle, mask[1], SequenceStatus.RightPeel))
-        print(self.masks)
-
+        
     def add_sequence_holder(self, sequence_holder):
         if sequence_holder is None:
             return
@@ -127,7 +125,9 @@ class SequenceList:
         # split the holder to keep the left part
         relative_split_size = split_position - self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
 
+        print(holder_to_split, relative_split_size)
         left_holder, _ = holder_to_split.split(relative_split_size)
+        print(left_holder)
 
         # Sequence creations
         on_succes = SequenceList()
@@ -155,6 +155,7 @@ class SequenceList:
                 on_succes.masks.append((prev_mask[0]-position_modifier, prev_mask[1]-position_modifier, prev_mask[2]))
                 on_error.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
 
+        print(on_succes, on_error)
         return on_succes, on_error
 
     def split_leftpeel_mask(self, mask):
@@ -202,18 +203,11 @@ class SequenceList:
         WARNING: the split mask must cover 2 positions at least
         """
         split_position = (mask[0] + mask[1] + 1) // 2
-        left_list, right_list = self.divide(split_position)
+        left, right = self.divide(split_position)
+        left.init_masks()
+        right.init_masks()
 
-        if mask[2] == SequenceStatus.LeftDicho:
-            if left_list.nucl_size() > 1:
-                left_list.init_masks()
-            return left_list
-        elif mask[2] == SequenceStatus.RightDicho:
-            if right_list.nucl_size() > 1:
-                right_list.init_masks()
-            return right_list
-
-        raise NotImplementedError()
+        return left, right
 
     def split_center(self, position):
         left_list, right_list = self.divide(position)
@@ -247,14 +241,6 @@ class SequenceList:
             right_list.add_sequence_holder(lst)
 
         return left_list, right_list
-
-    # def extends(self, seq_list):
-    #     size_pre_merge = self.nucl_size()
-
-    #     for seq_holder in seq_list.seq_holders:
-    #         self.add_sequence_holder(seq_holder)
-    #     for start, stop, status in seq_list.masks:
-    #         self.masks.append((start+size_pre_merge, stop+size_pre_merge, status))
 
 
 class SequenceHolder:
@@ -330,6 +316,9 @@ class FileManager:
             return s
         else:
             return f"FileManager({self.filename}): {len(self)} indexed sequences"
+
+    def num_masks(self):
+        return sum(len(lst.masks) for lst in self.sequence_lists)
 
     def get_masks(self):
         for lst_idx, lst in enumerate(self.sequence_lists):
@@ -466,6 +455,9 @@ class ExperimentContent:
 
     def size(self):
         return self.inputs_size
+
+    def num_masks(self):
+        return sum(x.num_masks() for x in self.input_sequences.values())
 
     def copy(self):
         copy = ExperimentContent()

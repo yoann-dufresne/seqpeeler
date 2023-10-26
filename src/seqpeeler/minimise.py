@@ -147,113 +147,96 @@ class DeleteFilesJob(Job):
                     yield new_job
 
 
-class DichotomicJob(Job):
+def next_mask(content):
+    """
+    Selectes the largest mask in a file manager and return its coordinates
+    """
+    max_size = 0
+    max_lst = -1
+    max_mask = None
 
-    def __init__(self, exp_content, cmd, result_dir, to_reduce):
-        """
-        Creates a dichotomic job.
+    for fm in content.input_sequences.values():
+        for lst_idx, mask in fm.get_masks():
+            mask_size = mask[1] - mask[0] + 1
+            if mask_size > max_size:
+                max_size = mask_size
+                max_lst = lst_idx
+                max_mask = mask
 
-            Parameters:
-                exp_content (ExperimentContent): File content of the job
-                cmd (string): Command to run (before modification)
-                result_dir (string): Directory to use for outputs
-                to_reduce (tuple): Triplets that store the file to reduce, the list index in which the reduction is done and the mask to use for reduction
-        """
-        # 1 - Parameter registration
-        self.file_to_reduce, self.mask_to_reduce_lst_idx, self.mask_to_reduce = to_reduce
-        # 2 - Modification of the inputs to match the reduction
-        self.parent_content = exp_content
-        exp_content = self.reduce_inputs()
-        # 3 - Creation of the job
+    return fm.original_name, max_lst, max_mask
+
+def create_next_jobs(prev_job):
+    """
+    Explore the masks of a job to create the next jobs. Returns the jobs created along the process.
+    """
+    prev_content = prev_job.exp_content
+
+    if prev_content.num_masks() > 0:
+        filename, lst_idx, mask = next_mask(prev_content)
+        if mask[2] == SequenceStatus.Dichotomy:
+            return create_dycho_jobs(prev_job, filename, lst_idx, mask)
+        else:
+            return create_peel_jobs(prev_job, filename, lst_idx, mask)
+
+    return []
+
+def create_dycho_jobs(prev_job, filename, lst_to_modify, mask_to_use):
+    jobs = []
+    lst = prev_job.exp_content.input_sequences[filename].sequence_lists[lst_to_modify]
+    left_lst, right_lst = lst.split_dicho_mask(mask_to_use)
+
+    # Left dychotomic job
+    left_content = prev_job.exp_content.copy()
+    left_content.input_sequences[filename].sequence_lists[lst_to_modify] = left_lst
+    left_job = MaskJob(left_content, prev_job.initial_cmd, prev_job.result_dir)
+    left_job.set_subsumed_job(prev_job)
+
+    # right dichotomic job
+    right_content = prev_job.exp_content.copy()
+    right_content.input_sequences[filename].sequence_lists[lst_to_modify] = right_lst
+    right_job = MaskJob(right_content, prev_job.initial_cmd, prev_job.result_dir)
+    right_job.set_subsumed_job(prev_job)
+    left_job.set_subsumed_job(right_job)
+    
+    # Create a new content to transform dicho mask to peel masks
+    fake_content = prev_job.exp_content.copy()
+    fake_lst = fake_content.input_sequences[filename].sequence_lists[lst_to_modify]
+    mask_idx = fake_lst.masks.index(mask_to_use)
+    fake_lst.dicho_to_peel(mask_to_use)
+    tmp_mask = fake_lst.masks[mask_idx]
+    # Creates a fake job to recursively call the job creation
+    fake_job = MaskJob(fake_content, prev_job.initial_cmd, prev_job.result_dir)
+    success_peel_job, error_peel_job = create_peel_jobs(fake_job, filename, lst_to_modify, tmp_mask)
+    # Dicho jobs have priority on peeling jobs
+    left_job.set_subsumed_job(success_peel_job)
+    left_job.set_subsumed_job(error_peel_job)
+    right_job.set_subsumed_job(success_peel_job)
+    right_job.set_subsumed_job(error_peel_job)
+
+    return left_job, right_job, success_peel_job, error_peel_job
+
+
+def create_peel_jobs(prev_job, filename, lst_to_modify, mask_to_use):
+    lst = prev_job.exp_content.input_sequences[filename].sequence_lists[lst_to_modify]
+    success_lst, error_lst = lst.split_peel(mask_to_use)
+
+    success_content = prev_job.exp_content.copy()
+    success_content.input_sequences[filename].sequence_lists[lst_to_modify] = success_lst
+    success_job = MaskJob(success_content, prev_job.initial_cmd, prev_job.result_dir)
+
+    error_content = prev_job.exp_content.copy()
+    error_content.input_sequences[filename].sequence_lists[lst_to_modify] = error_lst
+    error_job = MaskJob(error_content, prev_job.initial_cmd, prev_job.result_dir)
+    success_job.set_subsumed_job(error_job)
+
+    return success_job, error_job
+
+
+class MaskJob(Job):
+    def __init__(self, exp_content, cmd, result_dir):
         super().__init__(exp_content, cmd, result_dir)
 
-    def next_jobs(self, present_behaviour=False):
-        self.update_masks(present_behaviour=present_behaviour)
-        mask, lst_idx, file = self.select_mask()
-        match(mask[2]):
-            case SequenceStatus.LeftDicho:
-                yield LeftDichoJob(self.exp_content, self.cmd, self.result_dir, (file, lst_idx, mask))
-            case SequenceStatus.RightDicho:
-                yield RightDichoJob(self.exp_content, self.cmd, self.result_dir, (file, lst_idx, mask))
-            case SequenceStatus.LeftPeel:
-                yield LeftPeelJob(self.exp_content, self.cmd, self.result_dir, (file, lst_idx, mask))
-            case SequenceStatus.RightPeel:
-                yield RightPeelJob(self.exp_content, self.cmd, self.result_dir, (file, lst_idx, mask))
-
-    def select_mask(self):
-        mask_to_reduce = None
-        mask_to_reduce_lst_idx = None
-        file_to_reduce = None
-        max_size = 0
-        for filename in self.exp_content.input_sequences:
-            fm = self.exp_content.input_sequences[filename]
-            for lst_idx, mask in fm.get_masks():
-                size = mask[1] - mask[0] + 1
-                if size > max_size:
-                    max_size = size
-                    file_to_reduce = fm
-                    mask_to_reduce = mask
-                    mask_to_reduce_lst_idx = lst_idx
-        return mask_to_reduce, mask_to_reduce_lst_idx, file_to_reduce
-
-
-class LeftDichoJob(DichotomicJob):
-
-    def __init__(self, exp_content, cmd, result_dir, to_reduce):
-        super().__init__(exp_content, cmd, result_dir, to_reduce)
-
-    def reduce_inputs(self):
-        new_content = self.parent_content.copy()
-        new_file = new_content.input_sequences[self.file_to_reduce.original_name]
-
-        lst = self.file_to_reduce.sequence_lists[self.mask_to_reduce_lst_idx]
-        new_list = lst.split_dicho_mask(self.mask_to_reduce)
-        new_file.sequence_lists[self.mask_to_reduce_lst_idx] = new_list
-
-        return new_content
-
-    def update_masks(self, present_behaviour=False):
-        file = self.exp_content.input_sequences[self.file_to_reduce.original_name]
-        prev_lst = self.file_to_reduce.sequence_lists[self.mask_to_reduce_lst_idx]
-        lst = file.sequence_lists[self.mask_to_reduce_lst_idx]
-        mask_idx = prev_lst.masks.index(self.mask_to_reduce)
-        if present_behaviour:
-            lst.masks[mask_idx] = (lst.masks[mask_idx][0], lst.masks[mask_idx][1], SequenceStatus.LeftDicho)
-        else:
-            lst.masks[mask_idx] = (self.mask_to_reduce[0], self.mask_to_reduce[1], SequenceStatus.RightDicho)
-
-
-class RightDichoJob(DichotomicJob):
-
-    def __init__(self, exp_content, cmd, result_dir, to_reduce):
-        super().__init__(exp_content, cmd, result_dir, to_reduce)
-
-    def reduce_inputs(self):
-        return ExperimentContent()
-
-    def update_masks(self, present_behaviour=False):
-        pass
-
-
-class LeftPeelJob(DichotomicJob):
-
-    def __init__(self, exp_content, cmd, result_dir, to_reduce):
-        super().__init__(exp_content, cmd, result_dir, to_reduce)
-
-    def reduce_inputs(self):
-        return ExperimentContent()
-
-    def update_masks(self, present_behaviour=False):
-        pass
-
-
-class RightPeelJob(DichotomicJob):
-
-    def __init__(self, exp_content, cmd, result_dir, to_reduce):
-        super().__init__(exp_content, cmd, result_dir, to_reduce)
-
-    def reduce_inputs(self):
-        return ExperimentContent()
-
-    def update_masks(self, present_behaviour=False):
-        pass
+    def next_jobs(self, present_behaviour):
+        for job in create_next_jobs(self):
+            self.children_jobs.append(job)
+            yield job
