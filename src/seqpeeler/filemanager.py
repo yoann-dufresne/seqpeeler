@@ -117,22 +117,16 @@ class SequenceList:
         return middle
 
     def split_rightpeel_mask(self, mask):
-        print("right_peel")
-        print(self)
         # Get the holder to split
-        split_position = (mask[0] + mask[1]) // 2
-        print(split_position)
-        holder_idx = self.get_holder_to_split(split_position)
+        mask_split_position = (mask[0] + mask[1] + 1) // 2
+        holder_idx = self.get_holder_to_split(mask_split_position)
         holder_to_split = self.seq_holders[holder_idx]
 
-        # split the holder to keep the left part
-        relative_split_size = split_position - self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
-        relative_split_position = holder_to_split.left + relative_split_size - 1
-
-        print("mask", mask, "split_position", split_position)
-        print(holder_to_split, relative_split_position)
-        left_holder, _ = holder_to_split.split(relative_split_position)
-        print(left_holder)
+        # Get the position to split the holder
+        prev_size = self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
+        relative_mask_split_position = mask_split_position - prev_size
+        holder_split_position = holder_to_split.left + relative_mask_split_position
+        left_holder, _ = holder_to_split.split(holder_split_position)
 
         # Sequence creations
         on_succes = SequenceList()
@@ -145,14 +139,14 @@ class SequenceList:
             on_succes.add_sequence_holder(left_holder)
 
         # Masks update
-        position_modifier = mask[1] - split_position
+        position_modifier = mask[1] - mask_split_position
         before_peel_mask = True
         for prev_mask in self.masks:
             if before_peel_mask:
                 if mask == prev_mask:
                     before_peel_mask = False
-                    on_succes.masks.append((prev_mask[0], split_position-1, prev_mask[2]))
-                    on_error.masks.append((split_position, prev_mask[1], prev_mask[2]))
+                    on_succes.masks.append((prev_mask[0], mask_split_position-1, prev_mask[2]))
+                    on_error.masks.append((mask_split_position, prev_mask[1], prev_mask[2]))
                 else:
                     on_succes.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
                     on_error.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
@@ -160,20 +154,19 @@ class SequenceList:
                 on_succes.masks.append((prev_mask[0]-position_modifier, prev_mask[1]-position_modifier, prev_mask[2]))
                 on_error.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
 
-        print(on_succes, on_error)
-        print("/right_peel")
         return on_succes, on_error
 
     def split_leftpeel_mask(self, mask):
         # Get the holder to split
-        split_position = (mask[0] + mask[1] + 1) // 2
-        holder_idx = self.get_holder_to_split(split_position)
+        mask_split_position = (mask[0] + mask[1] + 1) // 2
+        holder_idx = self.get_holder_to_split(mask_split_position)
         holder_to_split = self.seq_holders[holder_idx]
 
-        # split the holder to keep the left part
-        relative_split_size = split_position - self.cumulative_size[holder_idx-1] if holder_idx != 0 else split_position
-
-        _, right_holder = holder_to_split.split(relative_split_size)
+         # Get the position to split the holder
+        prev_size = self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
+        relative_mask_split_position = mask_split_position - prev_size
+        holder_split_position = holder_to_split.left + relative_mask_split_position
+        _, right_holder = holder_to_split.split(holder_split_position)
 
         # Sequence creations
         on_succes = SequenceList()
@@ -186,14 +179,14 @@ class SequenceList:
             on_succes.add_sequence_holder(seq_holder)
 
         # Masks update
-        position_modifier = split_position - mask[0]
+        position_modifier = mask_split_position - mask[0]
         before_peel_mask = True
         for prev_mask in self.masks:
             if before_peel_mask:
                 if mask == prev_mask:
                     before_peel_mask = False
-                    on_succes.masks.append((0, prev_mask[1] - split_position, prev_mask[2]))
-                    on_error.masks.append((prev_mask[0], split_position-1, prev_mask[2]))
+                    on_succes.masks.append((0, prev_mask[1] - mask_split_position, prev_mask[2]))
+                    on_error.masks.append((prev_mask[0], mask_split_position-1, prev_mask[2]))
                 else:
                     on_succes.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
                     on_error.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
@@ -201,7 +194,6 @@ class SequenceList:
                 on_succes.masks.append((prev_mask[0]-position_modifier, prev_mask[1]-position_modifier, prev_mask[2]))
                 on_error.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
 
-        print("on_succes", on_succes)
         return on_succes, on_error
 
     def split_dicho_mask(self, mask):
