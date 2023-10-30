@@ -117,16 +117,21 @@ class SequenceList:
         return middle
 
     def split_rightpeel_mask(self, mask):
+        print("right_peel")
+        print(self)
         # Get the holder to split
-        split_position = (mask[0] + mask[1] + 1) // 2
+        split_position = (mask[0] + mask[1]) // 2
+        print(split_position)
         holder_idx = self.get_holder_to_split(split_position)
         holder_to_split = self.seq_holders[holder_idx]
 
         # split the holder to keep the left part
         relative_split_size = split_position - self.cumulative_size[holder_idx-1] if holder_idx != 0 else 0
+        relative_split_position = holder_to_split.left + relative_split_size - 1
 
-        print(holder_to_split, relative_split_size)
-        left_holder, _ = holder_to_split.split(relative_split_size)
+        print("mask", mask, "split_position", split_position)
+        print(holder_to_split, relative_split_position)
+        left_holder, _ = holder_to_split.split(relative_split_position)
         print(left_holder)
 
         # Sequence creations
@@ -156,11 +161,12 @@ class SequenceList:
                 on_error.masks.append((prev_mask[0], prev_mask[1], prev_mask[2]))
 
         print(on_succes, on_error)
+        print("/right_peel")
         return on_succes, on_error
 
     def split_leftpeel_mask(self, mask):
         # Get the holder to split
-        split_position = (mask[0] + mask[1] + 1 + 1) // 2
+        split_position = (mask[0] + mask[1] + 1) // 2
         holder_idx = self.get_holder_to_split(split_position)
         holder_to_split = self.seq_holders[holder_idx]
 
@@ -258,9 +264,9 @@ class SequenceHolder:
     def nucl_size(self, unmasked=False):
         return self.right - self.left + 1
 
-    def split(self, size):
-        left = SequenceHolder(self.header, self.left, size-1, self.file)
-        right = SequenceHolder(self.header, size, self.right, self.file)
+    def split(self, position):
+        left = SequenceHolder(self.header, self.left, position-1, self.file)
+        right = SequenceHolder(self.header, position, self.right, self.file)
         return left, right
 
     def create_header(self):
