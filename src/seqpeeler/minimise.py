@@ -68,8 +68,10 @@ class Peeler:
                     if not self.args.keep:
                         child.clean()
 
+            print("before", mainscheduler.waiting_list)
             for j in job.next_jobs(present_behaviour=present_behaviour):
                 mainscheduler.submit_job(j)
+            print("after", mainscheduler.waiting_list)
 
 
 class CompleteJob(Job):
@@ -87,7 +89,9 @@ class CompleteJob(Job):
 
         # Only 1 file => Try to reduce its sequences
         if len(self.exp_content.input_sequences) == 1:
-            # yield DichotomicJob.from_previous_job(self)
+            # Dichotomic jobs
+            for job in create_next_jobs(self):
+                yield job
             return
 
         # Multiple files => Try to remove some files
@@ -135,7 +139,9 @@ class DeleteFilesJob(Job):
             sequences = self.exp_content.ordered_inputs
             # Nothing to delete after that job
             if len(sequences) == 1 or len(self.exp_content.ordered_inputs) == self.deletion_idx:
-                # return DichotomicJob.from_previous_job(self)
+                # Dichotomic jobs
+                for job in create_next_jobs(self):
+                    yield job
                 return
 
             if present_behaviour:
@@ -173,12 +179,16 @@ def create_next_jobs(prev_job):
 
     if prev_content.num_masks() > 0:
         filename, lst_idx, mask = next_mask(prev_content)
-        if mask[2] == SequenceStatus.Dichotomy:
-            return create_dycho_jobs(prev_job, filename, lst_idx, mask)
-        else:
-            return create_peel_jobs(prev_job, filename, lst_idx, mask)
+        print(filename, lst_idx, mask)
+        if mask is not None:
+            if mask[2] == SequenceStatus.Dichotomy:
+                for job in create_dycho_jobs(prev_job, filename, lst_idx, mask):
+                    yield job
+            else:
+                for job in create_peel_jobs(prev_job, filename, lst_idx, mask):
+                    yield job
 
-    return []
+    return
 
 def create_dycho_jobs(prev_job, filename, lst_to_modify, mask_to_use):
     jobs = []
@@ -235,6 +245,16 @@ def create_peel_jobs(prev_job, filename, lst_to_modify, mask_to_use):
 class MaskJob(Job):
     def __init__(self, exp_content, cmd, result_dir):
         super().__init__(exp_content, cmd, result_dir)
+
+    def __repr__(self):
+        masks_repr = []
+        for fm in self.exp_content.input_sequences.values():
+            for lst_idx, mask in fm.get_masks():
+                m_type = mask[2].name[0]
+                masks_repr.append(f"[{mask[0]}-{mask[1]} {m_type}]")
+            masks_repr.append(" ")
+        
+        return f"{super().__repr__()} {';'.join(masks_repr)}"
 
     def next_jobs(self, present_behaviour=None):
         for job in create_next_jobs(self):

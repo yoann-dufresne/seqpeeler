@@ -43,6 +43,8 @@ class Job:
         self.children_jobs = []
         self.subsumed_jobs = []
 
+    def __repr__(self):
+        return self.__class__.__name__
 
     def save_triggers(self, returncode, stdout, stderr):
         self.returncode = returncode

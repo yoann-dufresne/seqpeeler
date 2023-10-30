@@ -36,7 +36,7 @@ def parsing_files(filesnames) :
 
     for filename in filesnames :
         manager = FileManager(filename)
-        manager.index_sequences()
+        manager.init_content()
         files.append(manager)
 
     return files
