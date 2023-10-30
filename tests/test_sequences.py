@@ -143,6 +143,47 @@ class TestSequencesPeel:
 		assert on_failure.masks[0] == (0, 4, SequenceStatus.LeftPeel)
 
 
+class TestBetweenSequenceSplits:
+	def init(self):
+		self.seq1 = SequenceHolder("complete 1", 1, 9, "fake.fa")
+		self.seq2 = self.seq1.copy()
+		self.seq_list = SequenceList()
+		self.seq_list.add_sequence_holder(self.seq1)
+		self.seq_list.add_sequence_holder(self.seq2)
+		self.seq_list.init_masks()
+
+	def test_dicho(self):
+		self.init()
+
+		mask = self.seq_list.masks[0]
+		left_lst, right_lst = self.seq_list.split_dicho_mask(mask)
+		
+		assert len(left_lst) == 1
+		assert left_lst.nucl_size() == self.seq1.nucl_size()
+		assert len(left_lst.masks) == 1
+		assert left_lst.masks[0] == (0, self.seq1.nucl_size()-1, SequenceStatus.Dichotomy)
+
+		assert right_lst.nucl_size() == self.seq1.nucl_size()
+		assert len(right_lst) == 1
+
+	def test_peel(self):
+		self.init()
+		mask = (0, self.seq_list.nucl_size()-1, SequenceStatus.RightPeel)
+		self.seq_list.masks[0] = mask
+
+		on_success, on_failure = self.seq_list.split_peel(mask)
+		
+		assert len(on_success) == 1
+		assert on_success.nucl_size() == self.seq1.nucl_size()
+		assert len(on_success.masks) == 1
+		assert on_success.masks[0] == (0, self.seq1.nucl_size()-1, SequenceStatus.RightPeel)
+
+		assert len(on_failure) == 2
+		assert on_failure.nucl_size() == self.seq_list.nucl_size()
+		assert len(on_failure.masks) == 1
+		assert on_failure.masks[0] == (self.seq_list.nucl_size() // 2, mask[1], SequenceStatus.RightPeel)
+
+
 class TestSequencesSplit:
 	def init(self):
 		self.seq1 = SequenceHolder("complete 1", 0, 9, "fake.fa")

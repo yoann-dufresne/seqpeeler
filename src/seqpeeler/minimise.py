@@ -236,7 +236,7 @@ class MaskJob(Job):
     def __init__(self, exp_content, cmd, result_dir):
         super().__init__(exp_content, cmd, result_dir)
 
-    def next_jobs(self, present_behaviour):
+    def next_jobs(self, present_behaviour=None):
         for job in create_next_jobs(self):
             self.children_jobs.append(job)
             yield job
